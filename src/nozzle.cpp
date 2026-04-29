@@ -2,9 +2,9 @@
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <bbb/nozzle/nozzle.hpp>
-#include <bbb/nozzle/pixel_access.hpp>
-#include <bbb/nozzle/discovery.hpp>
+#include <nozzle/nozzle.hpp>
+#include <nozzle/pixel_access.hpp>
+#include <nozzle/discovery.hpp>
 
 #include <cmath>
 #include <cstring>
@@ -13,7 +13,7 @@
 
 namespace nb = nanobind;
 using namespace nb::literals;
-namespace nz = bbb::nozzle;
+namespace nz = nozzle;
 
 struct format_info {
     uint32_t channels;
