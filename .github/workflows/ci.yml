@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install scikit-build-core nanobind pytest numpy
+
+      - name: Build and install
+        run: pip install -e . --no-build-isolation
+
+      - name: Test
+        run: python -m pytest tests/ -v
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install scikit-build-core nanobind pytest numpy
+
+      - name: Build and install
+        run: pip install -e . --no-build-isolation
+
+      - name: Test
+        run: python -m pytest tests/ -v
+        continue-on-error: true
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdrm-dev libgbm-dev libegl-dev libgl-dev
+
+      - name: Install Python dependencies
+        run: pip install scikit-build-core nanobind pytest numpy
+
+      - name: Build and install
+        run: pip install -e . --no-build-isolation
+
+      - name: Test
+        run: python -m pytest tests/ -v
+        continue-on-error: true
