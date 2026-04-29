@@ -11,16 +11,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup SSH for private submodule
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.NOZZLE_DEPLOY_KEY }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Init submodules
-        run: git submodule update --init --recursive
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -39,17 +31,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup SSH for private submodule
-        shell: bash
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.NOZZLE_DEPLOY_KEY }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Init submodules
-        run: git submodule update --init --recursive
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -69,16 +52,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup SSH for private submodule
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.NOZZLE_DEPLOY_KEY }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Init submodules
-        run: git submodule update --init --recursive
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
