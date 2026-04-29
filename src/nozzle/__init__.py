@@ -10,6 +10,7 @@ __all__ = [
     "SenderInfo",
     "ConnectedSenderInfo",
     "Frame",
+    "LockedPixels",
     "Sender",
     "Receiver",
     "Device",

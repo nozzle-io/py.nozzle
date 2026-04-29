@@ -6,6 +6,7 @@
 #include <bbb/nozzle/pixel_access.hpp>
 #include <bbb/nozzle/discovery.hpp>
 
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <vector>
@@ -90,6 +91,77 @@ static nb::object pixels_to_numpy(const nz::mapped_pixels &px) {
     }
 }
 
+static uint16_t float_to_half(float f) {
+    uint32_t x;
+    std::memcpy(&x, &f, sizeof(x));
+    uint32_t sign = (x >> 16) & 0x8000;
+    int32_t exp = ((x >> 23) & 0xFF) - 127 + 15;
+    uint32_t mant = (x >> 13) & 0x3FF;
+    if (exp <= 0) { return static_cast<uint16_t>(sign); }
+    if (exp >= 31) { return static_cast<uint16_t>(sign | 0x7C00); }
+    return static_cast<uint16_t>(sign | (exp << 10) | mant);
+}
+
+static float half_to_float(uint16_t h) {
+    uint32_t sign = (h >> 15) & 1;
+    uint32_t exp = (h >> 10) & 0x1F;
+    uint32_t mant = h & 0x3FF;
+    uint32_t x;
+    if (exp == 0) {
+        x = sign << 31;
+    } else if (exp == 31) {
+        x = (sign << 31) | 0x7F800000 | (mant << 13);
+    } else {
+        x = (sign << 31) | ((exp - 15 + 127) << 23) | (mant << 13);
+    }
+    float f;
+    std::memcpy(&f, &x, sizeof(f));
+    return f;
+}
+
+struct LockedPixels {
+    nz::frame frame_;
+    void *data{nullptr};
+    uint32_t row_bytes{0};
+    uint32_t width{0};
+    uint32_t height{0};
+    nz::texture_format format{nz::texture_format::unknown};
+    bool locked{false};
+
+    explicit LockedPixels(nz::frame frm) : frame_(std::move(frm)) {
+        if (!frame_.valid()) {
+            throw std::runtime_error("frame is not valid");
+        }
+        auto result = nz::lock_frame_pixels(frame_);
+        if (!result.ok()) {
+            throw std::runtime_error(result.error().message.c_str());
+        }
+        auto &px = result.value();
+        data = px.data;
+        row_bytes = px.row_bytes;
+        width = px.width;
+        height = px.height;
+        format = px.format;
+        locked = true;
+    }
+
+    ~LockedPixels() {
+        if (locked) {
+            nz::unlock_frame_pixels(frame_);
+            locked = false;
+        }
+    }
+
+    LockedPixels(const LockedPixels &) = delete;
+    LockedPixels &operator=(const LockedPixels &) = delete;
+    LockedPixels(LockedPixels &&o) noexcept
+        : frame_(std::move(o.frame_)), data(o.data), row_bytes(o.row_bytes),
+          width(o.width), height(o.height), format(o.format), locked(o.locked) {
+        o.locked = false;
+        o.data = nullptr;
+    }
+};
+
 NB_MODULE(_nozzle, m) {
     m.attr("__version__") = "0.1.0";
 
@@ -166,10 +238,96 @@ NB_MODULE(_nozzle, m) {
         .def_ro("last_update_time_ns", &nz::connected_sender_info::last_update_time_ns)
         ;
 
+    nb::class_<LockedPixels>(m, "LockedPixels")
+        .def("to_ndarray", [](LockedPixels &lp) -> nb::ndarray<nb::numpy> {
+            auto fi = get_format_info(lp.format);
+            if (fi.channels == 0) {
+                throw std::runtime_error("unsupported texture format");
+            }
+
+            nb::handle owner = nb::find(&lp);
+
+            if (fi.channels > 1) {
+                size_t shape[3] = {
+                    static_cast<size_t>(lp.height),
+                    static_cast<size_t>(lp.width),
+                    static_cast<size_t>(fi.channels)
+                };
+                int64_t strides[3] = {
+                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(fi.channels * fi.element_bytes),
+                    static_cast<int64_t>(fi.element_bytes)
+                };
+                return nb::ndarray<nb::numpy>(
+                    lp.data, 3, shape, owner, strides, fi.dtype
+                );
+            } else {
+                size_t shape[2] = {
+                    static_cast<size_t>(lp.height),
+                    static_cast<size_t>(lp.width)
+                };
+                int64_t strides[2] = {
+                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(fi.element_bytes)
+                };
+                return nb::ndarray<nb::numpy>(
+                    lp.data, 2, shape, owner, strides, fi.dtype
+                );
+            }
+        }, nb::rv_policy::reference_internal)
+        .def("__dlpack__", [](LockedPixels &lp, nb::object, nb::object,
+                              nb::object, nb::object) -> nb::ndarray<nb::numpy> {
+            auto fi = get_format_info(lp.format);
+            if (fi.channels == 0) {
+                throw std::runtime_error("unsupported texture format");
+            }
+            nb::handle owner = nb::find(&lp);
+            if (fi.channels > 1) {
+                size_t shape[3] = {
+                    static_cast<size_t>(lp.height),
+                    static_cast<size_t>(lp.width),
+                    static_cast<size_t>(fi.channels)
+                };
+                int64_t strides[3] = {
+                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(fi.channels * fi.element_bytes),
+                    static_cast<int64_t>(fi.element_bytes)
+                };
+                return nb::ndarray<nb::numpy>(
+                    lp.data, 3, shape, owner, strides, fi.dtype
+                );
+            } else {
+                size_t shape[2] = {
+                    static_cast<size_t>(lp.height),
+                    static_cast<size_t>(lp.width)
+                };
+                int64_t strides[2] = {
+                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(fi.element_bytes)
+                };
+                return nb::ndarray<nb::numpy>(
+                    lp.data, 2, shape, owner, strides, fi.dtype
+                );
+            }
+        }, "stream"_a = nb::none(), "max_version"_a = nb::none(),
+           "dl_device"_a = nb::none(), "copy"_a = nb::none())
+        .def("__dlpack_device__", [](LockedPixels &) {
+            return nb::make_tuple(1, 0);
+        })
+        .def_prop_ro("width", [](const LockedPixels &lp) { return lp.width; })
+        .def_prop_ro("height", [](const LockedPixels &lp) { return lp.height; })
+        .def_prop_ro("format", [](const LockedPixels &lp) { return lp.format; })
+        ;
+
     nb::class_<nz::frame>(m, "Frame")
         .def("valid", &nz::frame::valid)
         .def("info", &nz::frame::info)
         .def("release", &nz::frame::release)
+        .def("lock_pixels", [](nb::handle py_frm) -> LockedPixels* {
+            auto *frm_ptr = nb::inst_ptr<nz::frame>(py_frm);
+            auto locked = new LockedPixels(std::move(*frm_ptr));
+            return locked;
+        }, nb::rv_policy::take_ownership)
         .def("get_array", [](nz::frame &frm) -> nb::object {
             if (!frm.valid()) {
                 throw std::runtime_error("frame is not valid");
@@ -178,9 +336,81 @@ NB_MODULE(_nozzle, m) {
             if (!result.ok()) {
                 throw std::runtime_error(result.error().message.c_str());
             }
-            auto arr = pixels_to_numpy(result.value());
+            auto &px = result.value();
+
+            auto fi = get_format_info(px.format);
+            if (fi.channels == 0) {
+                nz::unlock_frame_pixels(frm);
+                throw std::runtime_error("unsupported texture format");
+            }
+
+            if (px.format == nz::texture_format::rgba16_float) {
+                size_t total_floats = static_cast<size_t>(px.height) * px.width * fi.channels;
+                auto *buf = new std::vector<float>(total_floats);
+                auto *src = static_cast<const uint16_t *>(px.data);
+                for (size_t i = 0; i < total_floats; ++i) {
+                    (*buf)[i] = half_to_float(src[i]);
+                }
+                nz::unlock_frame_pixels(frm);
+
+                nb::capsule deleter(buf, [](void *p) noexcept {
+                    delete static_cast<std::vector<float> *>(p);
+                });
+                size_t shape[3] = {
+                    static_cast<size_t>(px.height),
+                    static_cast<size_t>(px.width),
+                    static_cast<size_t>(fi.channels)
+                };
+                nb::ndarray<nb::numpy> arr(
+                    buf->data(), 3, shape, deleter, nullptr, nb::dtype<float>()
+                );
+                return nb::cast(std::move(arr));
+            }
+
+            size_t total_bytes = static_cast<size_t>(px.height) * px.row_bytes;
+            auto *buf = new std::vector<uint8_t>(total_bytes);
+            std::memcpy(buf->data(), px.data, total_bytes);
             nz::unlock_frame_pixels(frm);
-            return arr;
+
+            nb::capsule deleter(buf, [](void *p) noexcept {
+                delete static_cast<std::vector<uint8_t> *>(p);
+            });
+
+            if (fi.channels > 1) {
+                size_t shape[3] = {
+                    static_cast<size_t>(px.height),
+                    static_cast<size_t>(px.width),
+                    static_cast<size_t>(fi.channels)
+                };
+                nb::ndarray<nb::numpy> arr(
+                    buf->data(), 3, shape, deleter, nullptr, fi.dtype
+                );
+                return nb::cast(std::move(arr));
+            } else {
+                size_t shape[2] = {
+                    static_cast<size_t>(px.height),
+                    static_cast<size_t>(px.width)
+                };
+                nb::ndarray<nb::numpy> arr(
+                    buf->data(), 2, shape, deleter, nullptr, fi.dtype
+                );
+                return nb::cast(std::move(arr));
+            }
+        })
+        .def("__dlpack__", [](nz::frame &frm, nb::object, nb::object,
+                              nb::object, nb::object) -> nb::object {
+            if (!frm.valid()) {
+                throw std::runtime_error("frame is not valid");
+            }
+            auto result = nz::lock_frame_pixels(frm);
+            if (!result.ok()) {
+                throw std::runtime_error(result.error().message.c_str());
+            }
+            return pixels_to_numpy(result.value());
+        }, "stream"_a = nb::none(), "max_version"_a = nb::none(),
+           "dl_device"_a = nb::none(), "copy"_a = nb::none())
+        .def("__dlpack_device__", [](nz::frame &) {
+            return nb::make_tuple(1, 0);
         })
         ;
 
@@ -213,13 +443,75 @@ NB_MODULE(_nozzle, m) {
             auto dt = arr.dtype();
             nz::texture_format fmt = numpy_dtype_to_format(dt, channels);
             if (fmt == nz::texture_format::unknown) {
-                throw std::runtime_error("unsupported array dtype/channels combination");
+                throw std::runtime_error(
+                    "unsupported array dtype/channels combination: "
+                    "expected uint8 (1/2/3/4ch), float32 (1/4ch), or uint16 (4ch)"
+                );
             }
 
             nz::texture_desc tdesc{};
             tdesc.width = width;
             tdesc.height = height;
             tdesc.format = fmt;
+
+            if (dt == nb::dtype<uint8_t>() && channels == 1) {
+                tdesc.format = nz::texture_format::rgba8_unorm;
+                auto wf_result = snd.acquire_writable_frame(tdesc);
+                if (!wf_result.ok()) {
+                    throw std::runtime_error(wf_result.error().message.c_str());
+                }
+                auto &wf = wf_result.value();
+                auto px_result = nz::lock_writable_pixels(wf);
+                if (!px_result.ok()) {
+                    throw std::runtime_error(px_result.error().message.c_str());
+                }
+                auto &px = px_result.value();
+                for (uint32_t y = 0; y < px.height; ++y) {
+                    auto *src = static_cast<const uint8_t *>(arr.data()) + y * width;
+                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_bytes;
+                    for (uint32_t x = 0; x < px.width; ++x) {
+                        dst[x * 4 + 0] = src[x];
+                        dst[x * 4 + 1] = src[x];
+                        dst[x * 4 + 2] = src[x];
+                        dst[x * 4 + 3] = 255;
+                    }
+                }
+                nz::unlock_writable_pixels(wf);
+                auto commit_result = snd.commit_frame(wf);
+                if (!commit_result.ok()) {
+                    throw std::runtime_error(commit_result.error().message.c_str());
+                }
+                return;
+            }
+
+            if (dt == nb::dtype<float>() && channels == 4) {
+                tdesc.format = nz::texture_format::rgba16_float;
+                auto wf_result = snd.acquire_writable_frame(tdesc);
+                if (!wf_result.ok()) {
+                    throw std::runtime_error(wf_result.error().message.c_str());
+                }
+                auto &wf = wf_result.value();
+                auto px_result = nz::lock_writable_pixels(wf);
+                if (!px_result.ok()) {
+                    throw std::runtime_error(px_result.error().message.c_str());
+                }
+                auto &px = px_result.value();
+                for (uint32_t y = 0; y < px.height; ++y) {
+                    auto *src = static_cast<const float *>(arr.data()) + y * width * 4;
+                    auto *dst = reinterpret_cast<uint16_t *>(
+                        static_cast<uint8_t *>(px.data) + y * px.row_bytes
+                    );
+                    for (uint32_t x = 0; x < px.width * 4; ++x) {
+                        dst[x] = float_to_half(src[x]);
+                    }
+                }
+                nz::unlock_writable_pixels(wf);
+                auto commit_result = snd.commit_frame(wf);
+                if (!commit_result.ok()) {
+                    throw std::runtime_error(commit_result.error().message.c_str());
+                }
+                return;
+            }
 
             auto wf_result = snd.acquire_writable_frame(tdesc);
             if (!wf_result.ok()) {
