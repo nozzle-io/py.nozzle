@@ -1,0 +1,16 @@
+[build-system]
+requires = ["scikit-build-core >=0.4.3", "nanobind >=1.3.2"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "nozzle"
+version = "0.1.0"
+description = "Python bindings for nozzle - inter-process GPU texture sharing"
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+
+[tool.scikit-build]
+minimum-version = "0.4"
+build-dir = "build/{wheel_tag}"
+wheel.py-api = "cp312"
+wheel.packages = ["src/nozzle"]
