@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(MSVC)
+    cmake_policy(SET CMP0091 NEW)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
 project(nozzle_py LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
