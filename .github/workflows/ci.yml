@@ -11,9 +11,12 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.NOZZLE_PAT }}
+
+      - name: Configure git for private submodule
+        run: git config --global url."https://x-access-token:${{ secrets.NOZZLE_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init submodules
+        run: git submodule update --init --recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -32,9 +35,12 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.NOZZLE_PAT }}
+
+      - name: Configure git for private submodule
+        run: git config --global url."https://x-access-token:${{ secrets.NOZZLE_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init submodules
+        run: git submodule update --init --recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -54,9 +60,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.NOZZLE_PAT }}
+
+      - name: Configure git for private submodule
+        run: git config --global url."https://x-access-token:${{ secrets.NOZZLE_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init submodules
+        run: git submodule update --init --recursive
 
       - uses: actions/setup-python@v5
         with:
