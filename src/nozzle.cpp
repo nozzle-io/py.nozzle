@@ -454,65 +454,6 @@ NB_MODULE(_nozzle, m) {
             tdesc.height = height;
             tdesc.format = fmt;
 
-            if (dt == nb::dtype<uint8_t>() && channels == 1) {
-                tdesc.format = nz::texture_format::rgba8_unorm;
-                auto wf_result = snd.acquire_writable_frame(tdesc);
-                if (!wf_result.ok()) {
-                    throw std::runtime_error(wf_result.error().message.c_str());
-                }
-                auto &wf = wf_result.value();
-                auto px_result = nz::lock_writable_pixels(wf);
-                if (!px_result.ok()) {
-                    throw std::runtime_error(px_result.error().message.c_str());
-                }
-                auto &px = px_result.value();
-                for (uint32_t y = 0; y < px.height; ++y) {
-                    auto *src = static_cast<const uint8_t *>(arr.data()) + y * width;
-                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_bytes;
-                    for (uint32_t x = 0; x < px.width; ++x) {
-                        dst[x * 4 + 0] = src[x];
-                        dst[x * 4 + 1] = src[x];
-                        dst[x * 4 + 2] = src[x];
-                        dst[x * 4 + 3] = 255;
-                    }
-                }
-                nz::unlock_writable_pixels(wf);
-                auto commit_result = snd.commit_frame(wf);
-                if (!commit_result.ok()) {
-                    throw std::runtime_error(commit_result.error().message.c_str());
-                }
-                return;
-            }
-
-            if (dt == nb::dtype<float>() && channels == 4) {
-                tdesc.format = nz::texture_format::rgba16_float;
-                auto wf_result = snd.acquire_writable_frame(tdesc);
-                if (!wf_result.ok()) {
-                    throw std::runtime_error(wf_result.error().message.c_str());
-                }
-                auto &wf = wf_result.value();
-                auto px_result = nz::lock_writable_pixels(wf);
-                if (!px_result.ok()) {
-                    throw std::runtime_error(px_result.error().message.c_str());
-                }
-                auto &px = px_result.value();
-                for (uint32_t y = 0; y < px.height; ++y) {
-                    auto *src = static_cast<const float *>(arr.data()) + y * width * 4;
-                    auto *dst = reinterpret_cast<uint16_t *>(
-                        static_cast<uint8_t *>(px.data) + y * px.row_bytes
-                    );
-                    for (uint32_t x = 0; x < px.width * 4; ++x) {
-                        dst[x] = float_to_half(src[x]);
-                    }
-                }
-                nz::unlock_writable_pixels(wf);
-                auto commit_result = snd.commit_frame(wf);
-                if (!commit_result.ok()) {
-                    throw std::runtime_error(commit_result.error().message.c_str());
-                }
-                return;
-            }
-
             auto wf_result = snd.acquire_writable_frame(tdesc);
             if (!wf_result.ok()) {
                 throw std::runtime_error(wf_result.error().message.c_str());

@@ -91,12 +91,9 @@ def test_send_receive_grayscale():
     frame = receiver.acquire_frame(timeout_ms=1000)
     if frame.valid():
         received = frame.get_array()
-        assert received.shape == (64, 128, 4)
+        assert received.shape == (64, 128)
         assert received.dtype == np.uint8
-        assert received[0, 0, 0] == 128
-        assert received[0, 0, 1] == 128
-        assert received[0, 0, 2] == 128
-        assert received[0, 0, 3] == 255
+        assert received[0, 0] == 128
     else:
         pytest.skip("could not acquire frame (sender/receiver not connected in time)")
 
@@ -113,7 +110,7 @@ def test_send_receive_float32():
         received = frame.get_array()
         assert received.shape == (32, 48, 4)
         assert received.dtype == np.float32
-        np.testing.assert_allclose(received[0, 0], [0.5, 0.5, 0.5, 0.5], atol=0.01)
+        np.testing.assert_allclose(received[0, 0], [0.5, 0.5, 0.5, 0.5], atol=1e-6)
     else:
         pytest.skip("could not acquire frame (sender/receiver not connected in time)")
 
@@ -180,3 +177,20 @@ def test_locked_pixels_invalid_frame():
     frame.release()
     with pytest.raises(RuntimeError, match="frame is not valid"):
         frame.lock_pixels()
+
+
+def test_send_receive_r32_float():
+    sender = nozzle.Sender.create("test_r32f_py", "test_app")
+    receiver = nozzle.Receiver.create("test_r32f_py", "test_viewer")
+
+    img = np.full((16, 32), 3.14, dtype=np.float32)
+    sender.publish_array(img)
+
+    frame = receiver.acquire_frame(timeout_ms=1000)
+    if frame.valid():
+        received = frame.get_array()
+        assert received.shape == (16, 32)
+        assert received.dtype == np.float32
+        np.testing.assert_allclose(received[0, 0], 3.14, atol=1e-6)
+    else:
+        pytest.skip("could not acquire frame (sender/receiver not connected in time)")
