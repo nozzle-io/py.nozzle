@@ -1,5 +1,8 @@
 # py.nozzle
 
+> This codebase is currently in its AI-slob prototyping phase: the code runs on momentum, vibes, and plausible intent.
+> Proper debugging will be introduced once demand graduates from hypothetical to measurable.
+
 Python bindings for [nozzle](https://github.com/nozzle-io/nozzle) — cross-platform inter-process GPU texture sharing.
 
 Built with [nanobind](https://github.com/wjakob/nanobind) and [scikit-build-core](https://github.com/scientific-python/scikit-build-core). NumPy arrays are zero-copy via DLPack.
@@ -133,3 +136,8 @@ The extension calls exclusively through the C ABI (`nozzle_c.h`).
 ## License
 
 MIT
+
+Third-party dependencies:
+
+- [nozzle](https://github.com/nozzle-io/nozzle) — MIT
+- [nanobind](https://github.com/wjakob/nanobind) — BSD-3-Clause
