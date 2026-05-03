@@ -254,7 +254,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(fi.channels)
                 };
                 int64_t strides[3] = {
-                    static_cast<int64_t>(lp.row_stride_bytes),
+                    static_cast<int64_t>(lp.row_bytes),
                     static_cast<int64_t>(fi.channels * fi.element_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
@@ -267,7 +267,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(lp.width)
                 };
                 int64_t strides[2] = {
-                    static_cast<int64_t>(lp.row_stride_bytes),
+                    static_cast<int64_t>(lp.row_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
                 return nb::ndarray<nb::numpy>(
@@ -289,7 +289,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(fi.channels)
                 };
                 int64_t strides[3] = {
-                    static_cast<int64_t>(lp.row_stride_bytes),
+                    static_cast<int64_t>(lp.row_bytes),
                     static_cast<int64_t>(fi.channels * fi.element_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
@@ -302,7 +302,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(lp.width)
                 };
                 int64_t strides[2] = {
-                    static_cast<int64_t>(lp.row_stride_bytes),
+                    static_cast<int64_t>(lp.row_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
                 return nb::ndarray<nb::numpy>(
