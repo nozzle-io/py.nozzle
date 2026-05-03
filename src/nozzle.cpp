@@ -61,7 +61,7 @@ static nb::object pixels_to_numpy(const nz::mapped_pixels &px) {
         throw std::runtime_error("unsupported texture format");
     }
 
-    size_t total_bytes = static_cast<size_t>(px.height) * px.row_bytes;
+    size_t total_bytes = static_cast<size_t>(px.height) * px.row_stride_bytes;
     auto *buf = new std::vector<uint8_t>(total_bytes);
     std::memcpy(buf->data(), px.data, total_bytes);
 
@@ -132,13 +132,13 @@ struct LockedPixels {
         if (!frame_.valid()) {
             throw std::runtime_error("frame is not valid");
         }
-        auto result = nz::lock_frame_pixels(frame_);
+        auto result = nz::lock_frame_pixels_with_origin(frame_, nz::texture_origin::top_left);
         if (!result.ok()) {
             throw std::runtime_error(result.error().message.c_str());
         }
         auto &px = result.value();
         data = px.data;
-        row_bytes = px.row_bytes;
+        row_bytes = px.row_stride_bytes;
         width = px.width;
         height = px.height;
         format = px.format;
@@ -254,7 +254,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(fi.channels)
                 };
                 int64_t strides[3] = {
-                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(lp.row_stride_bytes),
                     static_cast<int64_t>(fi.channels * fi.element_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
@@ -267,7 +267,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(lp.width)
                 };
                 int64_t strides[2] = {
-                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(lp.row_stride_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
                 return nb::ndarray<nb::numpy>(
@@ -289,7 +289,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(fi.channels)
                 };
                 int64_t strides[3] = {
-                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(lp.row_stride_bytes),
                     static_cast<int64_t>(fi.channels * fi.element_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
@@ -302,7 +302,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<size_t>(lp.width)
                 };
                 int64_t strides[2] = {
-                    static_cast<int64_t>(lp.row_bytes),
+                    static_cast<int64_t>(lp.row_stride_bytes),
                     static_cast<int64_t>(fi.element_bytes)
                 };
                 return nb::ndarray<nb::numpy>(
@@ -332,7 +332,7 @@ NB_MODULE(_nozzle, m) {
             if (!frm.valid()) {
                 throw std::runtime_error("frame is not valid");
             }
-            auto result = nz::lock_frame_pixels(frm);
+            auto result = nz::lock_frame_pixels_with_origin(frm, nz::texture_origin::top_left);
             if (!result.ok()) {
                 throw std::runtime_error(result.error().message.c_str());
             }
@@ -367,7 +367,7 @@ NB_MODULE(_nozzle, m) {
                 return nb::cast(std::move(arr));
             }
 
-            size_t total_bytes = static_cast<size_t>(px.height) * px.row_bytes;
+            size_t total_bytes = static_cast<size_t>(px.height) * px.row_stride_bytes;
             auto *buf = new std::vector<uint8_t>(total_bytes);
             std::memcpy(buf->data(), px.data, total_bytes);
             nz::unlock_frame_pixels(frm);
@@ -402,7 +402,7 @@ NB_MODULE(_nozzle, m) {
             if (!frm.valid()) {
                 throw std::runtime_error("frame is not valid");
             }
-            auto result = nz::lock_frame_pixels(frm);
+            auto result = nz::lock_frame_pixels_with_origin(frm, nz::texture_origin::top_left);
             if (!result.ok()) {
                 throw std::runtime_error(result.error().message.c_str());
             }
@@ -460,7 +460,7 @@ NB_MODULE(_nozzle, m) {
             }
             auto &wf = wf_result.value();
 
-            auto px_result = nz::lock_writable_pixels(wf);
+            auto px_result = nz::lock_writable_pixels_with_origin(wf, nz::texture_origin::top_left);
             if (!px_result.ok()) {
                 throw std::runtime_error(px_result.error().message.c_str());
             }
@@ -472,14 +472,14 @@ NB_MODULE(_nozzle, m) {
             if (ndim == 3) {
                 for (uint32_t y = 0; y < px.height; ++y) {
                     auto *src = static_cast<const uint8_t *>(arr.data()) + y * width * channels * fi.element_bytes;
-                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_bytes;
+                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_stride_bytes;
                     std::memcpy(dst, src, src_row_bytes);
                 }
             } else {
                 size_t src_row = static_cast<size_t>(width) * fi.element_bytes;
                 for (uint32_t y = 0; y < px.height; ++y) {
                     auto *src = static_cast<const uint8_t *>(arr.data()) + y * src_row;
-                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_bytes;
+                    auto *dst = static_cast<uint8_t *>(px.data) + y * px.row_stride_bytes;
                     std::memcpy(dst, src, src_row);
                 }
             }
