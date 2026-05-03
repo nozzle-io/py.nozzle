@@ -7,6 +7,14 @@ Python bindings for [nozzle](https://github.com/nozzle-io/nozzle) — cross-plat
 
 Built with [nanobind](https://github.com/wjakob/nanobind) and [scikit-build-core](https://github.com/scientific-python/scikit-build-core). NumPy arrays are zero-copy via DLPack.
 
+## Disclaimer / Notice
+
+This library is currently a work in progress and contains many incomplete features and unverified implementations.
+Although it may appear usable at first glance, it may not function correctly.
+
+Please use it with the understanding that no guarantees are made regarding its behavior, and perform debugging, validation, and review as needed.
+If you encounter problems, please do not become angry; instead, contributions in the form of Issues or Pull Requests would be greatly appreciated.
+
 ## Requirements
 
 - Python 3.9+
