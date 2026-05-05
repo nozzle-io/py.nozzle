@@ -77,16 +77,42 @@ names = nozzle.list_senders()
 
 ### Pixel Formats
 
-NumPy dtypes map automatically to nozzle formats:
+#### Receiver Format Mapping
+
+All nozzle texture formats map to NumPy dtypes when receiving frames:
+
+| Nozzle Format | NumPy dtype | Channels | Bytes/Pixel |
+|---|---|---|---|
+| R8 UNORM | uint8 | 1 | 1 |
+| RG8 UNORM | uint8 | 2 | 2 |
+| RGBA8 UNORM / BGRA8 UNORM / RGBA8 SRGB / BGRA8 SRGB | uint8 | 4 | 4 |
+| R16 UNORM | uint16 | 1 | 2 |
+| RG16 UNORM | uint16 | 2 | 4 |
+| RGBA16 UNORM | uint16 | 4 | 8 |
+| R16 Float | uint16 | 1 | 2 |
+| RG16 Float | uint16 | 2 | 4 |
+| RGBA16 Float | uint16 | 4 | 8 |
+| R32 Float | float32 | 1 | 4 |
+| RG32 Float | float32 | 2 | 8 |
+| RGBA32 Float | float32 | 4 | 16 |
+| R32 Uint | uint32 | 1 | 4 |
+| RGBA32 Uint | uint32 | 4 | 16 |
+
+#### Sender Format Auto-detection
+
+When sending NumPy arrays via `publish_array()`, the following dtype and channel combinations are auto-detected:
 
 | NumPy dtype | Channels | Nozzle Format |
-|-------------|----------|---------------|
-| `uint8` | 1 | R8 UNORM |
-| `uint8` | 2 | RG8 UNORM |
-| `uint8` | 4 | RGBA8 UNORM |
-| `float32` | 1 | R32 Float |
-| `float32` | 4 | RGBA32 Float |
-| `float16` | 4 | RGBA16 Float |
+|---|---|---|
+| uint8 | 1 | R8 UNORM |
+| uint8 | 2 | RG8 UNORM |
+| uint8 | 3 | RGBA8 UNORM (3 channels padded) |
+| uint8 | 4 | RGBA8 UNORM |
+| float32 | 1 | R32 Float |
+| float32 | 4 | RGBA32 Float |
+| uint16 | 4 | RGBA16 Float |
+
+Other dtype and channel combinations are not auto-detected for sending. Use the C API directly for those formats.
 
 ### DLPack Support
 
