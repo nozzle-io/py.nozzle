@@ -165,7 +165,7 @@ py.nozzle
 └── tests/             pytest test suite
 ```
 
-The extension calls exclusively through the C ABI (`nozzle_c.h`).
+The extension calls through the C++ API (`nozzle.hpp`).
 
 ## License
 
