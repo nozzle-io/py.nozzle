@@ -57,8 +57,39 @@ def test_frame_info():
         assert info.width == 200
         assert info.height == 100
         assert info.format == nozzle.TextureFormat.RGBA8_UNORM
+        assert hasattr(info, 'semantic_format'), "FrameInfo missing semantic_format attribute"
+        assert info.semantic_format == nozzle.TextureFormat.RGBA8_UNORM
     else:
         pytest.skip("could not acquire frame")
+
+
+def test_frame_info_semantic_format_field():
+    sender = nozzle.Sender.create("test_semantic_fmt", "test_app")
+    receiver = nozzle.Receiver.create("test_semantic_fmt", "test_viewer")
+
+    sender.publish_array(np.zeros((64, 128, 4), dtype=np.uint8))
+
+    frame = receiver.acquire_frame(timeout_ms=1000)
+    if frame.valid():
+        info = frame.info()
+        assert hasattr(info, 'semantic_format'), "FrameInfo missing semantic_format attribute"
+        assert info.semantic_format == nozzle.TextureFormat.RGBA8_UNORM
+        assert info.format == info.semantic_format
+    else:
+        pytest.skip("could not acquire frame (sender/receiver not connected in time)")
+
+
+def test_connected_sender_info_semantic_format():
+    sender = nozzle.Sender.create("test_conn_semantic", "test_app")
+    sender.publish_array(np.zeros((32, 32, 4), dtype=np.uint8))
+
+    senders = nozzle.enumerate_senders()
+    found = [s for s in senders if s.name == "test_conn_semantic"]
+    if not found:
+        pytest.skip("sender not discovered in time")
+    info = found[0]
+    assert hasattr(info, 'semantic_format'), "ConnectedSenderInfo missing semantic_format attribute"
+    assert info.semantic_format == nozzle.TextureFormat.RGBA8_UNORM
 
 
 def test_enums():
