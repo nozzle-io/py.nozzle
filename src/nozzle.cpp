@@ -165,6 +165,16 @@ struct LockedPixels {
 NB_MODULE(_nozzle, m) {
     m.attr("__version__") = "0.1.0";
 
+    nb::register_exception_translator([](const std::exception_ptr &exception, void *) {
+        try {
+            if (exception) {
+                std::rethrow_exception(exception);
+            }
+        } catch (const std::runtime_error &error) {
+            PyErr_SetString(PyExc_RuntimeError, error.what());
+        }
+    });
+
     nb::enum_<nz::backend_type>(m, "BackendType")
         .value("UNKNOWN", nz::backend_type::unknown)
         .value("D3D11", nz::backend_type::d3d11)
