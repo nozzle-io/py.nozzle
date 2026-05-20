@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, stable]
   pull_request:
-    branches: [main]
+    branches: [main, stable]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-macos:
@@ -26,7 +30,6 @@ jobs:
 
       - name: Test
         run: python -m pytest tests/ -v
-        continue-on-error: true
 
   build-windows:
     runs-on: windows-2022
@@ -47,7 +50,6 @@ jobs:
 
       - name: Test
         run: python -m pytest tests/ -v
-        continue-on-error: true
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -71,4 +73,3 @@ jobs:
 
       - name: Test
         run: python -m pytest tests/ -v
-        continue-on-error: true
