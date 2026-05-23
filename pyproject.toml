@@ -28,6 +28,8 @@ exclude = [
   ".github/**",
   ".git",
   ".git/**",
+  ".gitignore",
+  ".gitmodules",
   "uv.lock",
   "libs/nozzle/.git",
   "libs/nozzle/.git/**",
