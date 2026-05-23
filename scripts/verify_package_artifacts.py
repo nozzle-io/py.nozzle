@@ -87,7 +87,7 @@ def verify_wheels(dist_dir: Path, platform_name: str) -> None:
         )
 
 
-def archive_rel_paths(path: Path) -> set[str]:
+def archive_rel_paths(path: Path) -> list[str]:
     rels: set[str] = set()
     with tarfile.open(path, "r:gz") as tf:
         for member in tf.getmembers():
@@ -96,7 +96,7 @@ def archive_rel_paths(path: Path) -> set[str]:
                 fail(f"forbidden sdist member {member.name}")
             if len(parts) > 1:
                 rels.add("/".join(parts[1:]))
-    return rels
+    return sorted(rels)
 
 
 def verify_sdist(dist_dir: Path) -> None:
@@ -107,10 +107,13 @@ def verify_sdist(dist_dir: Path) -> None:
         if not sdist.name.startswith(f"{DIST_PREFIX}-"):
             fail(f"unexpected sdist distribution name: {sdist.name}")
         rels = archive_rel_paths(sdist)
-        missing = [required for required in REQUIRED_SDIST_PATHS if required not in rels]
+        rel_set = set(rels)
+        missing = [required for required in REQUIRED_SDIST_PATHS if required not in rel_set]
         if missing:
             fail(f"sdist {sdist.name} missing required vendored files: {', '.join(missing)}")
         print(f"sdist={sdist.name} vendored_nozzle=yes junk_absent=yes")
+        for rel in rels:
+            print(f"sdist_member={rel}")
         for required in REQUIRED_SDIST_PATHS:
             print(f"sdist_required={required}")
 
