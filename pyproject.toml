@@ -1,16 +1,36 @@
 [build-system]
-requires = ["scikit-build-core >=0.4.3", "nanobind >=1.3.2"]
+requires = ["scikit-build-core >=0.12", "nanobind >=1.3.2"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "nozzle"
+name = "nozzle-io"
 version = "0.1.0"
 description = "Python bindings for nozzle - inter-process GPU texture sharing"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = ["numpy"]
 
 [tool.scikit-build]
-minimum-version = "0.4"
+minimum-version = "0.12"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "cp312"
 wheel.packages = ["src/nozzle"]
+
+[tool.scikit-build.sdist]
+include = [
+  "libs/nozzle/CMakeLists.txt",
+  "libs/nozzle/LICENSE",
+  "libs/nozzle/cmake/**",
+  "libs/nozzle/include/**",
+  "libs/nozzle/src/**",
+  "libs/nozzle/libs/plog/include/**",
+]
+exclude = [
+  ".git",
+  ".git/**",
+  "libs/nozzle/.git",
+  "libs/nozzle/.git/**",
+  "libs/nozzle/build/**",
+  "libs/nozzle/_skbuild/**",
+  "libs/nozzle/**/__pycache__/**",
+  "libs/nozzle/**/.pytest_cache/**",
+]

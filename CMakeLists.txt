@@ -17,7 +17,7 @@ if(APPLE)
     endif()
 endif()
 
-find_package(Python 3.9 REQUIRED COMPONENTS Development.Module
+find_package(Python 3.12 REQUIRED COMPONENTS Development.Module
                                      OPTIONAL_COMPONENTS Development.SABIModule)
 find_package(nanobind CONFIG REQUIRED)
 

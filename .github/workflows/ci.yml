@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install scikit-build-core nanobind pytest numpy
+        run: pip install "scikit-build-core>=0.12" nanobind pytest numpy
 
       - name: Build and install
         run: pip install -e . --no-build-isolation
@@ -43,7 +43,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install scikit-build-core nanobind pytest numpy
+        run: pip install "scikit-build-core>=0.12" nanobind pytest numpy
 
       - name: Build and install
         run: pip install -e . --no-build-isolation
@@ -66,10 +66,125 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libdrm-dev libgbm-dev libegl-dev libgl-dev
 
       - name: Install Python dependencies
-        run: pip install scikit-build-core nanobind pytest numpy
+        run: pip install "scikit-build-core>=0.12" nanobind pytest numpy
 
       - name: Build and install
         run: pip install -e . --no-build-isolation
 
       - name: Test
         run: python -m pytest tests/ -v
+
+  package-macos-wheel:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Platform evidence
+        run: |
+          python --version
+          python - <<'PY'
+          import platform
+          print("platform=" + platform.platform())
+          print("machine=" + platform.machine())
+          PY
+
+      - name: Build wheel
+        run: python scripts/build_packages.py --clean --wheel
+
+      - name: Verify wheel tag and publishability
+        run: python scripts/verify_package_artifacts.py --platform macos
+
+      - name: Smoke installed wheel
+        run: python scripts/smoke_installed_package.py --kind wheel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-macos-wheel
+          path: dist/*.whl
+
+  package-windows-wheel:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Platform evidence
+        run: |
+          python --version
+          python -c "import platform; print('platform=' + platform.platform()); print('machine=' + platform.machine())"
+
+      - name: Build wheel
+        run: python scripts/build_packages.py --clean --wheel
+
+      - name: Verify wheel tag and publishability
+        run: python scripts/verify_package_artifacts.py --platform windows
+
+      - name: Smoke installed wheel
+        run: python scripts/smoke_installed_package.py --kind wheel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-windows-wheel
+          path: dist/*.whl
+
+  package-linux-wheel-sdist:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdrm-dev libgbm-dev libegl-dev libgl-dev
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Platform evidence
+        run: |
+          python --version
+          python - <<'PY'
+          import platform
+          print("platform=" + platform.platform())
+          print("machine=" + platform.machine())
+          PY
+
+      - name: Build wheel and sdist
+        run: python scripts/build_packages.py --clean --wheel --sdist
+
+      - name: Verify wheel tag, Linux CI-only policy, and sdist contents
+        run: python scripts/verify_package_artifacts.py --platform linux --require-sdist
+
+      - name: Smoke installed wheel outside checkout
+        run: python scripts/smoke_installed_package.py --kind wheel
+
+      - name: Smoke installed sdist outside checkout
+        run: python scripts/smoke_installed_package.py --kind sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-linux-wheel-sdist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz

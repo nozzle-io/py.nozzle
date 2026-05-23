@@ -17,7 +17,7 @@ If you encounter problems, please do not become angry; instead, contributions in
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12+
 - CMake 3.20+
 - C++17 compiler
 - macOS 12+ / Windows 10+ / Linux (glibc 2.31+)
@@ -25,8 +25,16 @@ If you encounter problems, please do not become angry; instead, contributions in
 ## Install
 
 ```bash
-pip install nozzle
+pip install nozzle-io
 ```
+
+The distribution name is `nozzle-io` because the `nozzle` name on PyPI is already occupied by an unrelated project. The import package remains `nozzle`:
+
+```python
+import nozzle
+```
+
+Do not install another distribution that provides a top-level `nozzle` package into the same environment.
 
 ### From Source
 
