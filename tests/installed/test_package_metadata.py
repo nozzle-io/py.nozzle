@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 
 import nozzle
+import pytest
 
 DIST_NAME = "nozzle-io"
 
@@ -12,7 +13,10 @@ def import_origin() -> Path:
 
 
 def forbidden_root() -> Path:
-    return Path(os.environ["NOZZLE_FORBIDDEN_IMPORT_ROOT"]).resolve()
+    value = os.environ.get("NOZZLE_FORBIDDEN_IMPORT_ROOT")
+    if value is None:
+        pytest.skip("NOZZLE_FORBIDDEN_IMPORT_ROOT is only set by installed-artifact smoke")
+    return Path(value).resolve()
 
 
 def test_distribution_metadata_matches_import_version():
