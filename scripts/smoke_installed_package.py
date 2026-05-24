@@ -89,13 +89,26 @@ def main() -> None:
     parser.add_argument("--dist-dir", default="dist", type=Path)
     parser.add_argument("--kind", choices=["wheel", "sdist"], required=True)
     parser.add_argument("--expected-version")
-    parser.add_argument("--tests-dir", type=Path)
-    parser.add_argument("--installed-tests-dir", type=Path)
+    parser.add_argument(
+        "--tests-dir",
+        type=Path,
+        help=(
+            "Deprecated alias for --installed-tests-dir. Tests are still copied "
+            "into the smoke temp directory before pytest runs."
+        ),
+    )
+    parser.add_argument(
+        "--installed-tests-dir",
+        type=Path,
+        help="Directory containing backend-free installed-artifact tests to copy into the smoke temp directory.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     if args.tests_dir is not None and args.installed_tests_dir is not None:
         fail("use only one of --tests-dir or --installed-tests-dir")
+    if args.tests_dir is not None:
+        print("smoke_warning=--tests-dir is deprecated; use --installed-tests-dir")
     tests_arg = args.installed_tests_dir if args.installed_tests_dir is not None else args.tests_dir
     dist_dir = args.dist_dir if args.dist_dir.is_absolute() else repo_root / args.dist_dir
     artifact = artifact_for(dist_dir, args.kind)
