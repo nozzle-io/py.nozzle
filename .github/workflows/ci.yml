@@ -104,7 +104,7 @@ jobs:
         run: python scripts/verify_package_artifacts.py --platform macos
 
       - name: Smoke installed wheel
-        run: python scripts/smoke_installed_package.py --kind wheel
+        run: python scripts/smoke_installed_package.py --kind wheel --installed-tests-dir tests/installed
 
       - uses: actions/upload-artifact@v4
         with:
@@ -137,7 +137,7 @@ jobs:
         run: python scripts/verify_package_artifacts.py --platform windows
 
       - name: Smoke installed wheel
-        run: python scripts/smoke_installed_package.py --kind wheel
+        run: python scripts/smoke_installed_package.py --kind wheel --installed-tests-dir tests/installed
 
       - uses: actions/upload-artifact@v4
         with:
@@ -177,10 +177,10 @@ jobs:
         run: python scripts/verify_package_artifacts.py --platform linux --require-sdist
 
       - name: Smoke installed wheel outside checkout
-        run: python scripts/smoke_installed_package.py --kind wheel
+        run: python scripts/smoke_installed_package.py --kind wheel --installed-tests-dir tests/installed
 
       - name: Smoke installed sdist outside checkout
-        run: python scripts/smoke_installed_package.py --kind sdist
+        run: python scripts/smoke_installed_package.py --kind sdist --installed-tests-dir tests/installed
 
       - uses: actions/upload-artifact@v4
         with:

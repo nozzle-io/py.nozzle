@@ -43,18 +43,45 @@ def smoke_code(expected_version: Optional[str]) -> str:
     expected_line = f"expected = {expected_version!r}" if expected_version else "expected = None"
     return f'''
 from importlib.metadata import distribution, version
+from pathlib import Path
+import os
 import nozzle
 {expected_line}
 metadata_version = version("{DIST_NAME}")
 dist_name = distribution("{DIST_NAME}").metadata["Name"]
+import_origin = Path(nozzle.__file__).resolve()
+forbidden_root = Path(os.environ["NOZZLE_FORBIDDEN_IMPORT_ROOT"]).resolve()
 print("distribution_name=" + dist_name)
 print("metadata_version=" + metadata_version)
 print("import_version=" + nozzle.__version__)
+print("import_origin=" + str(import_origin))
 assert dist_name == "{DIST_NAME}"
 assert metadata_version == nozzle.__version__
+assert not import_origin.is_relative_to(forbidden_root), (
+    f"imported nozzle from checkout: {{import_origin}} under {{forbidden_root}}"
+)
 if expected is not None:
     assert metadata_version == expected
 '''
+
+
+def copy_installed_tests(tests_dir: Path, smoke_root: Path) -> Path:
+    if not tests_dir.is_dir():
+        fail(f"installed tests dir does not exist: {tests_dir}")
+    destination = smoke_root / "tests"
+    copied = 0
+    for source in sorted(tests_dir.rglob("*.py")):
+        if "__pycache__" in source.parts:
+            continue
+        relative = source.relative_to(tests_dir)
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        print(f"installed_test_file={target}")
+        copied += 1
+    if copied == 0:
+        fail(f"no installed test files found in {tests_dir}")
+    return destination
 
 
 def main() -> None:
@@ -63,18 +90,24 @@ def main() -> None:
     parser.add_argument("--kind", choices=["wheel", "sdist"], required=True)
     parser.add_argument("--expected-version")
     parser.add_argument("--tests-dir", type=Path)
+    parser.add_argument("--installed-tests-dir", type=Path)
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
+    if args.tests_dir is not None and args.installed_tests_dir is not None:
+        fail("use only one of --tests-dir or --installed-tests-dir")
+    tests_arg = args.installed_tests_dir if args.installed_tests_dir is not None else args.tests_dir
     dist_dir = args.dist_dir if args.dist_dir.is_absolute() else repo_root / args.dist_dir
     artifact = artifact_for(dist_dir, args.kind)
     smoke_root = Path(tempfile.mkdtemp(prefix=f"py-nozzle-{args.kind}-smoke."))
+    print(f"smoke_cwd={smoke_root}")
     try:
         artifact_copy = smoke_root / "artifacts" / artifact.name
         artifact_copy.parent.mkdir(parents=True)
         shutil.copy2(artifact, artifact_copy)
         env = os.environ.copy()
         env.pop("PYTHONPATH", None)
+        env["NOZZLE_FORBIDDEN_IMPORT_ROOT"] = str(repo_root.resolve())
         venv_dir = smoke_root / "venv"
         run([sys.executable, "-m", "venv", str(venv_dir)], smoke_root, env)
         py = venv_python(venv_dir)
@@ -82,10 +115,12 @@ def main() -> None:
         run([str(py), "-m", "pip", "install", str(artifact_copy)], smoke_root, env)
         run([str(py), "-m", "pip", "show", DIST_NAME], smoke_root, env)
         run([str(py), "-c", smoke_code(args.expected_version)], smoke_root, env)
-        if args.tests_dir is not None:
-            tests_dir = args.tests_dir if args.tests_dir.is_absolute() else repo_root / args.tests_dir
+        if tests_arg is not None:
+            tests_dir = tests_arg if tests_arg.is_absolute() else repo_root / tests_arg
+            installed_tests = copy_installed_tests(tests_dir, smoke_root)
+            print(f"installed_tests_cwd={smoke_root}")
             run([str(py), "-m", "pip", "install", "pytest"], smoke_root, env)
-            run([str(py), "-m", "pytest", str(tests_dir), "-v"], smoke_root, env)
+            run([str(py), "-m", "pytest", str(installed_tests), "-v", "-s"], smoke_root, env)
         print(f"smoke_ok={args.kind} artifact={artifact.name} cwd={smoke_root}")
     finally:
         shutil.rmtree(smoke_root, ignore_errors=True)
