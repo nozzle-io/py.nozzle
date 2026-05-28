@@ -39,6 +39,20 @@ def artifact_for(dist_dir: Path, kind: str) -> Path:
     return matches[0].resolve()
 
 
+def selected_artifact(dist_dir: Path, kind: str, artifact: Path | None) -> Path:
+    if artifact is None:
+        return artifact_for(dist_dir, kind)
+    resolved = artifact.resolve()
+    if not resolved.is_file():
+        fail(f"artifact does not exist: {resolved}")
+    if kind == "wheel" and resolved.suffix != ".whl":
+        fail(f"expected wheel artifact, got {resolved.name}")
+    if kind == "sdist" and not resolved.name.endswith(".tar.gz"):
+        fail(f"expected sdist artifact, got {resolved.name}")
+    print(f"selected_artifact={resolved}")
+    return resolved
+
+
 def smoke_code(expected_version: Optional[str]) -> str:
     expected_line = f"expected = {expected_version!r}" if expected_version else "expected = None"
     return f'''
@@ -87,6 +101,7 @@ def copy_installed_tests(tests_dir: Path, smoke_root: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist-dir", default="dist", type=Path)
+    parser.add_argument("--artifact", type=Path, help="Explicit wheel or sdist path to smoke from a mixed artifact tree.")
     parser.add_argument("--kind", choices=["wheel", "sdist"], required=True)
     parser.add_argument("--expected-version")
     parser.add_argument(
@@ -111,7 +126,7 @@ def main() -> None:
         print("smoke_warning=--tests-dir is deprecated; use --installed-tests-dir")
     tests_arg = args.installed_tests_dir if args.installed_tests_dir is not None else args.tests_dir
     dist_dir = args.dist_dir if args.dist_dir.is_absolute() else repo_root / args.dist_dir
-    artifact = artifact_for(dist_dir, args.kind)
+    artifact = selected_artifact(dist_dir, args.kind, args.artifact)
     smoke_root = Path(tempfile.mkdtemp(prefix=f"py-nozzle-{args.kind}-smoke."))
     print(f"smoke_cwd={smoke_root}")
     try:

@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [main, stable]
+    tags: ['v*']
   pull_request:
     branches: [main, stable]
+  workflow_dispatch:
+    inputs:
+      release_dry_run:
+        description: "Run versioned release validation without uploading assets"
+        type: boolean
+        default: true
+      release_tag:
+        description: "Exact vX.Y.Z tag/version to validate in dry-run mode"
+        type: string
+        default: "v0.1.0"
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -188,3 +202,180 @@ jobs:
           path: |
             dist/*.whl
             dist/*.tar.gz
+
+
+  release-validate-macos:
+    runs-on: macos-14
+    needs:
+      - package-macos-wheel
+      - package-windows-wheel
+      - package-linux-wheel-sdist
+    if: >-
+      ${{ always() &&
+      needs.package-macos-wheel.result == 'success' &&
+      needs.package-windows-wheel.result == 'success' &&
+      needs.package-linux-wheel-sdist.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_dry_run)) }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Validate and smoke macOS arm64 release wheel
+        run: >-
+          python scripts/release_package_artifacts.py validate-native
+          --artifact-root release-artifacts
+          --artifact-class macos_wheel
+          --tag "$RELEASE_TAG"
+          --job release-validate-macos
+          --manifest-out release-manifests/macos_wheel.json
+          --installed-tests-dir tests/installed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-release-manifest-macos
+          path: release-manifests/macos_wheel.json
+
+  release-validate-windows:
+    runs-on: windows-2022
+    needs:
+      - package-macos-wheel
+      - package-windows-wheel
+      - package-linux-wheel-sdist
+    if: >-
+      ${{ always() &&
+      needs.package-macos-wheel.result == 'success' &&
+      needs.package-windows-wheel.result == 'success' &&
+      needs.package-linux-wheel-sdist.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_dry_run)) }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Validate and smoke Windows amd64 release wheel
+        run: >-
+          python scripts/release_package_artifacts.py validate-native
+          --artifact-root release-artifacts
+          --artifact-class windows_wheel
+          --tag "$env:RELEASE_TAG"
+          --job release-validate-windows
+          --manifest-out release-manifests/windows_wheel.json
+          --installed-tests-dir tests/installed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-release-manifest-windows
+          path: release-manifests/windows_wheel.json
+
+  release-validate-linux-sdist:
+    runs-on: ubuntu-22.04
+    needs:
+      - package-macos-wheel
+      - package-windows-wheel
+      - package-linux-wheel-sdist
+    if: >-
+      ${{ always() &&
+      needs.package-macos-wheel.result == 'success' &&
+      needs.package-windows-wheel.result == 'success' &&
+      needs.package-linux-wheel-sdist.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_dry_run)) }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdrm-dev libgbm-dev libegl-dev libgl-dev
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Validate and smoke release sdist
+        run: >-
+          python scripts/release_package_artifacts.py validate-native
+          --artifact-root release-artifacts
+          --artifact-class sdist
+          --tag "$RELEASE_TAG"
+          --job release-validate-linux-sdist
+          --manifest-out release-manifests/sdist.json
+          --installed-tests-dir tests/installed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: py-nozzle-release-manifest-linux-sdist
+          path: release-manifests/sdist.json
+
+  publish-versioned-release:
+    runs-on: ubuntu-22.04
+    needs:
+      - package-macos-wheel
+      - package-windows-wheel
+      - package-linux-wheel-sdist
+      - release-validate-macos
+      - release-validate-windows
+      - release-validate-linux-sdist
+    if: >-
+      ${{ always() &&
+      needs.package-macos-wheel.result == 'success' &&
+      needs.package-windows-wheel.result == 'success' &&
+      needs.package-linux-wheel-sdist.result == 'success' &&
+      needs.release-validate-macos.result == 'success' &&
+      needs.release-validate-windows.result == 'success' &&
+      needs.release-validate-linux-sdist.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_dry_run)) }}
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Publish or dry-run versioned GitHub Release assets
+        run: |
+          args=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            args="--dry-run"
+          fi
+          python scripts/release_package_artifacts.py publish \
+            --artifact-root release-artifacts \
+            --manifest-root release-artifacts \
+            --tag "$RELEASE_TAG" \
+            $args
