@@ -9,6 +9,8 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -190,6 +192,8 @@ def validate_artifact_class(path: Path, artifact_class: str, version: str) -> di
             f"python_tag={record['python_tag']} abi_tag={record['abi_tag']} "
             f"platform_tag={record['platform_tag']} publish_policy={PUBLISH_POLICY}"
         )
+        if artifact_class == "macos_wheel":
+            verify_macos_universal2_binaries(path)
         return record
     if artifact_class == "sdist":
         expected_name = f"{DIST_PREFIX}-{version}.tar.gz"
@@ -209,6 +213,39 @@ def validate_artifact_class(path: Path, artifact_class: str, version: str) -> di
             "platform_tag": "sdist",
         }
     fail(f"unknown artifact class: {artifact_class}")
+
+def universal2_archs_from_lipo_output(output: str) -> list[str]:
+    archs = [
+        arch
+        for arch in ("arm64", "x86_64")
+        if re.search(rf"(^|[^A-Za-z0-9_]){arch}([^A-Za-z0-9_]|$)", output)
+    ]
+    return archs
+
+
+def verify_macos_universal2_binaries(wheel: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="py-nozzle-universal2-wheel.") as tmp:
+        extract_root = Path(tmp)
+        with zipfile.ZipFile(wheel) as zf:
+            zf.extractall(extract_root)
+        native_files = sorted(
+            path
+            for path in extract_root.rglob("*")
+            if path.is_file() and path.suffix in {".so", ".dylib", ".a"}
+        )
+        if not native_files:
+            fail(f"no native Mach-O files found in macOS wheel: {wheel.name}")
+        for binary in native_files:
+            rel = binary.relative_to(extract_root)
+            completed = subprocess.run(["lipo", "-info", str(binary)], text=True, capture_output=True)
+            if completed.returncode != 0:
+                fail(f"lipo failed for {rel}: {completed.stderr.strip()}")
+            archs = universal2_archs_from_lipo_output(completed.stdout)
+            if archs != ["arm64", "x86_64"]:
+                fail(f"{rel} is not universal2: {completed.stdout.strip()}")
+            print(f"mach_o_binary={rel}")
+            print("mach_o_archs=arm64,x86_64")
+        print("universal2_binary_verified=yes")
 
 
 def smoke_kind(artifact_class: str) -> str:
@@ -348,17 +385,48 @@ def load_manifests(manifest_root: Path, version: str) -> dict[str, dict[str, Any
     return result
 
 
-def verify_rejected_linux(manifests: dict[str, dict[str, Any]]) -> None:
+def verify_rejected_linux(manifests: dict[str, dict[str, Any]], version: str, upload_names: set[str]) -> None:
     rejected: list[dict[str, Any]] = []
     for data in manifests.values():
         rejected.extend(data["rejected_artifacts"])
     linux = [item for item in rejected if isinstance(item, dict) and item.get("publish_policy") == LINUX_REJECT_POLICY]
     if not linux:
         fail("no rejected raw Linux wheel evidence found in validation manifests")
+    required_fields = {
+        "filename",
+        "distribution",
+        "version",
+        "python_tag",
+        "abi_tag",
+        "platform_tag",
+        "publish_policy",
+        "reason",
+    }
     for item in linux:
-        if item.get("reason") != LINUX_REJECT_REASON:
+        missing = sorted(required_fields - set(item))
+        extra = sorted(set(item) - required_fields)
+        if missing:
+            fail("raw Linux rejection record missing fields: " + ", ".join(missing))
+        if extra:
+            fail("raw Linux rejection record has unknown fields: " + ", ".join(extra))
+        for field in required_fields:
+            if not isinstance(item[field], str):
+                fail(f"raw Linux rejection field {field} must be string")
+        filename = item["filename"]
+        if filename in upload_names:
+            fail(f"raw Linux rejection record is also an upload target: {filename}")
+        if item["distribution"] != DIST_PREFIX:
+            fail(f"raw Linux rejection distribution mismatch: {item['distribution']}")
+        if item["version"] != version:
+            fail(f"raw Linux rejection version mismatch: {item['version']} != {version}")
+        if item["python_tag"] != EXPECTED_PYTHON_TAG:
+            fail(f"raw Linux rejection python tag mismatch: {item['python_tag']}")
+        if item["abi_tag"] != EXPECTED_ABI_TAG:
+            fail(f"raw Linux rejection ABI tag mismatch: {item['abi_tag']}")
+        if not item["platform_tag"].startswith("linux_"):
+            fail(f"raw Linux rejection platform tag mismatch: {item['platform_tag']}")
+        if item["reason"] != LINUX_REJECT_REASON:
             fail("raw Linux rejection record missing expected reason")
-        filename = item.get("filename")
         print(f"release_asset_rejected={filename} publish_policy={LINUX_REJECT_POLICY} reason={LINUX_REJECT_REASON}")
 
 
@@ -375,30 +443,65 @@ def verify_manifests_against_artifacts(artifact_root: Path, manifests: dict[str,
     return upload_paths
 
 
-def gh_json(args: list[str]) -> Any | None:
-    completed = subprocess.run(["gh", *args], cwd=repo_root(), text=True, capture_output=True)
+def github_repository() -> str:
+    completed = subprocess.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+        cwd=repo_root(),
+        text=True,
+        capture_output=True,
+    )
     if completed.returncode != 0:
-        return None
-    return json.loads(completed.stdout)
+        fail(f"failed to resolve GitHub repository: {completed.stderr.strip()}")
+    repo = completed.stdout.strip()
+    if not repo or "/" not in repo:
+        fail(f"invalid GitHub repository name: {repo}")
+    return repo
+
+
+def gh_release_for_tag(tag: str) -> tuple[bool, dict[str, Any] | None]:
+    repo = github_repository()
+    completed = subprocess.run(
+        ["gh", "api", f"repos/{repo}/releases/tags/{tag}"],
+        cwd=repo_root(),
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode == 0:
+        try:
+            data = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"malformed GitHub release API response: {exc}")
+        if not isinstance(data, dict):
+            fail("GitHub release API response must be an object")
+        return True, data
+    stderr = completed.stderr.strip()
+    if "HTTP 404" in stderr:
+        print(f"release_absence_verified=api_404 tag={tag}")
+        return False, None
+    fail(f"failed to query GitHub release for {tag}: {stderr}")
 
 
 def preflight_release(tag: str, upload_paths: list[Path], dry_run: bool) -> bool:
-    release = gh_json(["release", "view", tag, "--json", "tagName,assets"])
-    exists = release is not None
+    exists, release = gh_release_for_tag(tag)
     print(f"release_exists={'yes' if exists else 'no'}")
     existing_assets: set[str] = set()
     if exists:
-        if release.get("tagName") != tag:
-            fail(f"existing release tag mismatch: {release.get('tagName')} != {tag}")
+        assert release is not None
+        if release.get("tag_name") != tag:
+            fail(f"existing release tag mismatch: {release.get('tag_name')} != {tag}")
         assets = release.get("assets")
         if not isinstance(assets, list):
             fail("existing release assets payload is malformed")
         for asset in assets:
             if isinstance(asset, dict) and isinstance(asset.get("name"), str):
                 existing_assets.add(asset["name"])
+    duplicate_assets = [path.name for path in upload_paths if path.name in existing_assets]
+    if duplicate_assets:
+        print("partial_upload_recovery=manual_delete_existing_assets_or_publish_new_version")
+        for name in duplicate_assets:
+            print(f"release_asset_preflight={name} status=exists")
+        fail("release assets already exist: " + ", ".join(duplicate_assets))
     for path in upload_paths:
-        if path.name in existing_assets:
-            fail(f"release asset already exists: {path.name}")
         print(f"release_asset_preflight={path.name} status=absent")
     if dry_run:
         print("upload_skipped=true")
@@ -413,8 +516,8 @@ def publish(args: argparse.Namespace) -> None:
     selected, _ = classify_artifacts(artifact_root, version)
     validate_selected_set(selected)
     manifests = load_manifests(args.manifest_root.resolve(), version)
-    verify_rejected_linux(manifests)
     upload_paths = verify_manifests_against_artifacts(artifact_root, manifests)
+    verify_rejected_linux(manifests, version, {path.name for path in upload_paths})
     exists = preflight_release(args.tag, upload_paths, args.dry_run)
     if args.dry_run:
         return
