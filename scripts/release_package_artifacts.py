@@ -21,6 +21,7 @@ from verify_package_artifacts import (
     REQUIRED_SDIST_PATHS,
     archive_rel_paths,
     parse_wheel,
+    verify_wheel_payload,
 )
 
 SEMVER_TAG_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -30,6 +31,10 @@ LINUX_REJECT_REASON = "raw-linux-not-public"
 EXPECTED_PLATFORM_TAGS = {
     "macos_wheel": "macosx_14_0_universal2",
     "windows_wheel": "win_amd64",
+}
+ARTIFACT_CLASS_PLATFORMS = {
+    "macos_wheel": "macos",
+    "windows_wheel": "windows",
 }
 EXPECTED_JOBS = {
     "macos_wheel": "release-validate-macos",
@@ -192,8 +197,9 @@ def validate_artifact_class(path: Path, artifact_class: str, version: str) -> di
             f"python_tag={record['python_tag']} abi_tag={record['abi_tag']} "
             f"platform_tag={record['platform_tag']} publish_policy={PUBLISH_POLICY}"
         )
+        native_payload = verify_wheel_payload(path, ARTIFACT_CLASS_PLATFORMS[artifact_class])
         if artifact_class == "macos_wheel":
-            verify_macos_universal2_binaries(path)
+            verify_macos_universal2_binaries(path, native_payload)
         return record
     if artifact_class == "sdist":
         expected_name = f"{DIST_PREFIX}-{version}.tar.gz"
@@ -223,27 +229,21 @@ def universal2_archs_from_lipo_output(output: str) -> list[str]:
     return archs
 
 
-def verify_macos_universal2_binaries(wheel: Path) -> None:
+def verify_macos_universal2_binaries(wheel: Path, native_payload: list[str]) -> None:
     with tempfile.TemporaryDirectory(prefix="py-nozzle-universal2-wheel.") as tmp:
         extract_root = Path(tmp)
         with zipfile.ZipFile(wheel) as zf:
-            zf.extractall(extract_root)
-        native_files = sorted(
-            path
-            for path in extract_root.rglob("*")
-            if path.is_file() and path.suffix in {".so", ".dylib", ".a"}
-        )
-        if not native_files:
-            fail(f"no native Mach-O files found in macOS wheel: {wheel.name}")
-        for binary in native_files:
-            rel = binary.relative_to(extract_root)
+            for name in native_payload:
+                zf.extract(name, extract_root)
+        for name in native_payload:
+            binary = extract_root / name
             completed = subprocess.run(["lipo", "-info", str(binary)], text=True, capture_output=True)
             if completed.returncode != 0:
-                fail(f"lipo failed for {rel}: {completed.stderr.strip()}")
+                fail(f"lipo failed for {name}: {completed.stderr.strip()}")
             archs = universal2_archs_from_lipo_output(completed.stdout)
             if archs != ["arm64", "x86_64"]:
-                fail(f"{rel} is not universal2: {completed.stdout.strip()}")
-            print(f"mach_o_binary={rel}")
+                fail(f"{name} is not universal2: {completed.stdout.strip()}")
+            print(f"mach_o_binary={name}")
             print("mach_o_archs=arm64,x86_64")
         print("universal2_binary_verified=yes")
 

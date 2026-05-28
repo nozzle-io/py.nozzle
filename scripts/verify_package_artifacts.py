@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import sys
 import tarfile
+import zipfile
 from pathlib import Path
 
 DIST_PREFIX = "nozzle_io"
@@ -21,6 +22,11 @@ REQUIRED_SDIST_PATHS = [
     "libs/nozzle/libs/plog/include/plog/Log.h",
 ]
 FORBIDDEN_COMPONENTS = {".git", "build", "_skbuild", "__pycache__", ".pytest_cache"}
+WHEEL_NATIVE_SUFFIX = {
+    "macos": ".so",
+    "linux": ".so",
+    "windows": ".pyd",
+}
 
 
 def fail(message: str) -> None:
@@ -67,6 +73,46 @@ def classify_platform(platform_name: str, platform_tag: str) -> str:
     fail(f"unsupported platform: {platform_name}")
 
 
+def wheel_names(path: Path) -> list[str]:
+    with zipfile.ZipFile(path) as zf:
+        return sorted(name for name in zf.namelist() if not name.endswith("/"))
+
+
+def is_dist_info(name: str) -> bool:
+    first = name.split("/", 1)[0]
+    return first.endswith(".dist-info")
+
+
+def fail_forbidden_wheel_payload(name: str) -> None:
+    if name.startswith(("lib/", "include/")):
+        fail(f"forbidden wheel payload: {name}")
+    if "/cmake/" in name or name.endswith(".cmake"):
+        fail(f"forbidden wheel CMake payload: {name}")
+    if name.endswith((".a", ".lib", ".dylib", ".dll")):
+        fail(f"forbidden wheel native payload: {name}")
+
+
+def verify_wheel_payload(wheel: Path, platform_name: str) -> list[str]:
+    expected_suffix = WHEEL_NATIVE_SUFFIX[platform_name]
+    native_payload: list[str] = []
+    for name in wheel_names(wheel):
+        fail_forbidden_wheel_payload(name)
+        if name == "nozzle/__init__.py" or is_dist_info(name):
+            continue
+        if name.startswith("nozzle/_nozzle") and name.endswith(expected_suffix):
+            native_payload.append(name)
+            continue
+        if name.endswith((".so", ".pyd")):
+            fail(f"unexpected wheel native payload: {name}")
+        fail(f"unexpected wheel payload: {name}")
+    if len(native_payload) != 1:
+        fail(f"expected exactly one _nozzle native extension in {wheel.name}, found {len(native_payload)}")
+    print(f"wheel_native_payload={native_payload[0]}")
+    print("wheel_native_payload_verified=yes")
+    print("wheel_unexpected_payload_absent=yes")
+    return native_payload
+
+
 def verify_wheels(dist_dir: Path, platform_name: str) -> None:
     wheels = wheel_files(dist_dir)
     if not wheels:
@@ -85,6 +131,7 @@ def verify_wheels(dist_dir: Path, platform_name: str) -> None:
             + f" distribution={distribution} version={version} python_tag={python_tag}"
             + f" abi_tag={abi_tag} platform_tag={platform_tag} publish_policy={policy}"
         )
+        verify_wheel_payload(wheel, platform_name)
 
 
 def archive_rel_paths(path: Path) -> list[str]:
