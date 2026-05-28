@@ -111,7 +111,10 @@ jobs:
           print("machine=" + platform.machine())
           PY
 
-      - name: Build wheel
+      - name: Build universal2 wheel
+        env:
+          CMAKE_ARGS: "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+          ARCHFLAGS: "-arch arm64 -arch x86_64"
         run: python scripts/build_packages.py --clean --wheel
 
       - name: Verify wheel tag and publishability
@@ -231,7 +234,7 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Validate and smoke macOS arm64 release wheel
+      - name: Validate and smoke macOS universal2 release wheel
         run: >-
           python scripts/release_package_artifacts.py validate-native
           --artifact-root release-artifacts

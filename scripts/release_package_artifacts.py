@@ -26,7 +26,7 @@ PUBLISH_POLICY = "publishable-github-release"
 LINUX_REJECT_POLICY = "ci-only-raw-linux"
 LINUX_REJECT_REASON = "raw-linux-not-public"
 EXPECTED_PLATFORM_TAGS = {
-    "macos_wheel": "macosx_14_0_arm64",
+    "macos_wheel": "macosx_14_0_universal2",
     "windows_wheel": "win_amd64",
 }
 EXPECTED_JOBS = {
