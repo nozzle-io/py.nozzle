@@ -496,7 +496,10 @@ NB_MODULE(_nozzle, m) {
                 }
             }
 
-            nz::unlock_writable_pixels(wf);
+            auto unlock_result = nz::unlock_writable_pixels_checked(wf);
+            if (!unlock_result.ok()) {
+                throw std::runtime_error(unlock_result.error().message.c_str());
+            }
 
             auto commit_result = snd.commit_frame(wf);
             if (!commit_result.ok()) {
