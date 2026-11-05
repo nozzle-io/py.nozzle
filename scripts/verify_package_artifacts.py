@@ -19,6 +19,11 @@ REQUIRED_SDIST_PATHS = [
     "libs/nozzle/include/nozzle/nozzle_c.h",
     "libs/nozzle/src/common/device.cpp",
     "libs/nozzle/src/c_api/nozzle_c.cpp",
+    "libs/nozzle/sources/common.txt",
+    "libs/nozzle/sources/macos.txt",
+    "libs/nozzle/sources/windows.txt",
+    "libs/nozzle/sources/linux.txt",
+    "libs/nozzle/sources/opengl.txt",
     "libs/nozzle/libs/plog/include/plog/Log.h",
 ]
 FORBIDDEN_COMPONENTS = {".git", "build", "_skbuild", "__pycache__", ".pytest_cache"}
