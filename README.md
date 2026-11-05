@@ -18,7 +18,7 @@ If you encounter problems, please do not become angry; instead, contributions in
 ## Requirements
 
 - Python 3.12+
-- CMake 3.20+
+- CMake 3.26+
 - C++17 compiler
 - macOS 12+ / Windows 10+ / Linux (glibc 2.31+)
 
