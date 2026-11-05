@@ -5,7 +5,7 @@
 
 Python bindings for [nozzle](https://github.com/nozzle-io/nozzle) — cross-platform inter-process GPU texture sharing.
 
-Built with [nanobind](https://github.com/wjakob/nanobind) and [scikit-build-core](https://github.com/scientific-python/scikit-build-core). NumPy arrays are zero-copy via DLPack.
+Built with [nanobind](https://github.com/wjakob/nanobind) and [scikit-build-core](https://github.com/scientific-python/scikit-build-core). Frame arrays can be copied or accessed as raw mapped views.
 
 ## Disclaimer / Notice
 
@@ -85,9 +85,24 @@ names = nozzle.list_senders()
 
 ### Pixel Formats
 
-#### Receiver Format Mapping
+#### Copying and Raw Pixel Access
 
-All nozzle texture formats map to NumPy dtypes when receiving frames:
+`frame.get_array()` returns a packed, top-left-origin copy. BGRA8 storage is
+converted to RGBA channel order, including sRGB formats without changing their
+transfer function. RGBA16 Float is widened to float32; other listed formats
+retain their element representation. Float32 channels are not swapped.
+
+`frame.lock_pixels()` transfers the frame into a `LockedPixels` owner.
+`locked.to_ndarray()` is a raw view: its channel order is the actual
+`locked.format`, and its strides retain mapped row padding. In particular,
+BGRA8 yields `[B, G, R, A]`, not `[R, G, B, A]`. The view retains the mapping
+owner. No in-place swap or hidden normalization copy is performed.
+
+`frame.info().format` describes storage; `semantic_format` describes the
+published meaning. A logical RGBA8 frame can have BGRA8 storage on Metal.
+
+Raw mapped views use these NumPy representations (half-float entries expose
+uint16 bit patterns, not numerical uint16 values):
 
 | Nozzle Format | NumPy dtype | Channels | Bytes/Pixel |
 |---|---|---|---|
@@ -122,16 +137,26 @@ When sending NumPy arrays via `publish_array()`, the following dtype and channel
 
 Other dtype and channel combinations are not auto-detected for sending. Use the C API directly for those formats.
 
+Four-channel uint8 input is logical RGBA; three-channel input is RGB with
+opaque alpha added. `publish_array()` converts to the actual mapped storage
+order. Read-only CPU NumPy arrays are accepted; strided arrays are converted
+to a contiguous temporary by nanobind before copying. Unsupported storage
+conversions fail rather than reinterpreting the input bytes or reducing
+precision silently.
+
 ### DLPack Support
 
-Frames implement `__dlpack__` and `__dlpack_device__` for zero-copy interop with PyTorch, JAX, etc.
+The current `__dlpack__` methods return NumPy arrays, not protocol capsules.
+They are not conforming DLPack producers; do not rely on `numpy.from_dlpack`,
+PyTorch, or JAX interoperability until
+[the DLPack contract repair](https://github.com/nozzle-io/nozzle-dev/issues/215)
+is complete. Device/copy/version arguments are currently ignored.
 
-```python
-import torch
-frame = receiver.acquire_frame(timeout_ms=1000)
-if frame.valid():
-    tensor = torch.from_dlpack(frame)
-```
+For existing direct callers only: `frame.__dlpack__()` makes a packed copy,
+normalizes BGRA8 to RGBA, and retains half-float data as uint16 bits.
+`locked.__dlpack__()` returns a raw storage-ordered view, like
+`locked.to_ndarray()`. These two operations are not both zero-copy. Prefer
+`get_array()` or `to_ndarray()` for explicit array access.
 
 ## API Reference
 
@@ -161,7 +186,7 @@ if frame.valid():
 | `frame.lock_pixels()` | Zero-copy pixel access via `LockedPixels` |
 | `frame.valid()` | Check if frame holds valid data |
 | `frame.release()` | Explicitly release frame |
-| `frame.__dlpack__()` | DLPack export |
+| `frame.__dlpack__()` | Legacy direct array copy; not a DLPack capsule |
 
 ## Architecture
 
