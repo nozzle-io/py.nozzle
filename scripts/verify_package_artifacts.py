@@ -4,14 +4,20 @@
 from __future__ import annotations
 
 import argparse
+from email.parser import Parser
+import re
+import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
 DIST_PREFIX = "nozzle_io"
 EXPECTED_PYTHON_TAG = "cp312"
 EXPECTED_ABI_TAG = "abi3"
+EXPECTED_MACOS_PLATFORM_TAG = "macosx_14_0_universal2"
+EXPECTED_MACOS_MINIMUM = (14, 0, 0)
 REQUIRED_SDIST_PATHS = [
     "libs/nozzle/CMakeLists.txt",
     "libs/nozzle/LICENSE",
@@ -68,7 +74,7 @@ def classify_platform(platform_name: str, platform_tag: str) -> str:
             return "ci-only-raw-linux"
         fail(f"unexpected Linux wheel platform tag: {platform_tag}")
     if platform_name == "macos":
-        if platform_tag.startswith("macosx_"):
+        if platform_tag == EXPECTED_MACOS_PLATFORM_TAG:
             return "publishable-github-release"
         fail(f"unexpected macOS wheel platform tag: {platform_tag}")
     if platform_name == "windows":
@@ -136,7 +142,80 @@ def verify_wheels(dist_dir: Path, platform_name: str) -> None:
             + f" distribution={distribution} version={version} python_tag={python_tag}"
             + f" abi_tag={abi_tag} platform_tag={platform_tag} publish_policy={policy}"
         )
-        verify_wheel_payload(wheel, platform_name)
+        payload = verify_wheel_payload(wheel, platform_name)
+        if platform_name == "macos":
+            verify_macos_wheel_metadata(wheel)
+            verify_macos_universal2_binaries(wheel, payload)
+
+
+def verify_macos_wheel_metadata(wheel: Path) -> None:
+    expected = f"{EXPECTED_PYTHON_TAG}-{EXPECTED_ABI_TAG}-{EXPECTED_MACOS_PLATFORM_TAG}"
+    with zipfile.ZipFile(wheel) as archive:
+        names = [name for name in archive.namelist() if name.endswith(".dist-info/WHEEL")]
+        if len(names) != 1:
+            fail("expected exactly one WHEEL metadata file")
+        metadata = Parser().parsestr(archive.read(names[0]).decode("utf-8"))
+    if metadata.get_all("Tag", []) != [expected]:
+        fail(f"WHEEL metadata must contain exactly Tag: {expected}")
+    print(f"wheel_internal_tag={expected}")
+
+
+def universal2_archs_from_lipo_output(output: str) -> list[str]:
+    return [
+        arch for arch in ("arm64", "x86_64")
+        if re.search(rf"(^|[^A-Za-z0-9_]){arch}([^A-Za-z0-9_]|$)", output)
+    ]
+
+
+def macos_minimum_from_otool(output: str) -> tuple[int, int, int]:
+    versions = []
+    for block in re.split(r"(?m)^Load command \d+\s*$", output):
+        command = re.search(r"(?m)^\s*cmd (LC_\w+)\s*$", block)
+        if not command:
+            continue
+        if command[1] == "LC_BUILD_VERSION":
+            platform = re.search(r"(?m)^\s*platform (\S+)\s*$", block)
+            if not platform or platform[1] not in ("1", "MACOS", "macos"):
+                fail("Mach-O deployment platform is not macOS")
+            version = re.search(r"(?m)^\s*minos (\d+\.\d+(?:\.\d+)?)\s*$", block)
+        elif command[1] == "LC_VERSION_MIN_MACOSX":
+            version = re.search(r"(?m)^\s*version (\d+\.\d+(?:\.\d+)?)\s*$", block)
+        else:
+            continue
+        if not version:
+            fail("missing or malformed Mach-O minimum OS")
+        parts = tuple(int(part) for part in version[1].split("."))
+        versions.append(parts + (0,) * (3 - len(parts)))
+    if len(versions) != 1:
+        fail("expected exactly one macOS deployment load command per slice")
+    return versions[0]
+
+
+def verify_macos_universal2_binaries(wheel: Path, native_payload: list[str]) -> None:
+    with tempfile.TemporaryDirectory(prefix="py-nozzle-universal2-wheel.") as tmp:
+        with zipfile.ZipFile(wheel) as archive:
+            for name in native_payload:
+                archive.extract(name, tmp)
+        for name in native_payload:
+            binary = Path(tmp) / name
+            completed = subprocess.run(["lipo", "-info", str(binary)], text=True, capture_output=True)
+            if completed.returncode != 0:
+                fail(f"lipo failed for {name}: {completed.stderr.strip()}")
+            if universal2_archs_from_lipo_output(completed.stdout) != ["arm64", "x86_64"]:
+                fail(f"{name} is not universal2: {completed.stdout.strip()}")
+            for arch in ("arm64", "x86_64"):
+                inspected = subprocess.run(
+                    ["xcrun", "otool", "-arch", arch, "-l", str(binary)],
+                    text=True, capture_output=True,
+                )
+                if inspected.returncode != 0:
+                    fail(f"otool failed for {name}/{arch}: {inspected.stderr.strip()}")
+                minimum = macos_minimum_from_otool(inspected.stdout)
+                if minimum != EXPECTED_MACOS_MINIMUM:
+                    fail(f"{name}/{arch} minimum OS {minimum} != {EXPECTED_MACOS_MINIMUM}")
+                print(f"mach_o_binary={name} arch={arch} minos=14.0")
+            print("mach_o_archs=arm64,x86_64")
+        print("universal2_binary_verified=yes")
 
 
 def archive_rel_paths(path: Path) -> list[str]:

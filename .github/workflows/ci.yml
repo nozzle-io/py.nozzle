@@ -113,9 +113,14 @@ jobs:
 
       - name: Build universal2 wheel
         env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
+          SKBUILD_BUILD_VERBOSE: "true"
           CMAKE_ARGS: "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
           ARCHFLAGS: "-arch arm64 -arch x86_64"
         run: python scripts/build_packages.py --clean --wheel
+
+      - name: Check macOS artifact validator rejection cases
+        run: python -m unittest discover -s tests/packaging -v
 
       - name: Verify wheel tag and publishability
         run: python scripts/verify_package_artifacts.py --platform macos

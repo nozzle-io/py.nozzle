@@ -165,6 +165,16 @@ if frame.valid():
 
 ## Architecture
 
+### macOS release wheels
+
+Published wheels retain the `cp312-abi3-macosx_14_0_universal2` contract,
+independent of the GitHub runner OS. The packaging job sets
+`MACOSX_DEPLOYMENT_TARGET=14.0` for both scikit-build-core wheel tagging and
+native compilation. Both the wheel metadata and each Mach-O slice must match
+that policy. A macOS 15 smoke run does not establish macOS 14 runtime testing
+or execution of the Intel slice. Developer builds can select another target;
+they are not automatically accepted as release artifacts.
+
 ```
 py.nozzle
 ├── src/nozzle.cpp     nanobind C++ extension wrapping nozzle C ABI
