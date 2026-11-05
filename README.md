@@ -20,7 +20,7 @@ If you encounter problems, please do not become angry; instead, contributions in
 - Python 3.12+
 - CMake 3.26+
 - C++17 compiler
-- macOS 12+ / Windows 10+ / Linux (glibc 2.31+)
+- macOS 14+ for release wheels / Windows 10+ / Linux (glibc 2.31+)
 
 ## Install
 
@@ -43,6 +43,13 @@ git clone --recurse-submodules https://github.com/nozzle-io/py.nozzle.git
 cd py.nozzle
 pip install .
 ```
+
+The CMake default `CMAKE_OSX_DEPLOYMENT_TARGET=12.0` is a legacy fallback for
+source builds when no target is supplied. It is not the Python distribution's
+supported minimum and does not demonstrate macOS 12 runtime compatibility.
+Release wheel CI explicitly supplies `MACOSX_DEPLOYMENT_TARGET=14.0`, which
+sets both the native compilation minimum and wheel platform tag. A local
+source build with different settings is not a conforming release wheel.
 
 ## Usage
 
