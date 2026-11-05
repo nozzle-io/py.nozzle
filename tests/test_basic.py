@@ -232,6 +232,9 @@ def test_multibyte_mapped_rows(half):
     values = np.arange(3 * 65 * 4, dtype=np.float32).reshape(3, 65, 4) / 1024
     # Include the smallest half subnormal, not just normal half values.
     values[0, 0, 0] = 2 ** -24
+    if not half:
+        values[0, 0, 1] = np.float32(1 + 2 ** -20)
+        values[0, 0, 2] = np.float32(70000)
     original = values.astype(np.float16).view(np.uint16) if half else values
     sender.publish_array(original)
     frame = wait_for_frame(receiver)
