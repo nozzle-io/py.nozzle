@@ -22,6 +22,7 @@ include = [
   "libs/nozzle/cmake/**",
   "libs/nozzle/include/**",
   "libs/nozzle/src/**",
+  "libs/nozzle/sources/**",
   "libs/nozzle/libs/plog/include/**",
 ]
 exclude = [
