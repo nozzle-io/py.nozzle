@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.26)
 
 if(MSVC)
     cmake_policy(SET CMP0091 NEW)
@@ -17,8 +17,8 @@ if(APPLE)
     endif()
 endif()
 
-find_package(Python 3.12 REQUIRED COMPONENTS Development.Module
-                                     OPTIONAL_COMPONENTS Development.SABIModule)
+find_package(Python 3.12 REQUIRED COMPONENTS
+    Interpreter Development.Module Development.SABIModule)
 find_package(nanobind CONFIG REQUIRED)
 
 # nozzle needs plog but may not find it if not built from its own tree.
