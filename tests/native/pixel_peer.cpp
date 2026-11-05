@@ -4,11 +4,76 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <thread>
 
+static int send_pattern(const char *name) {
+    nozzle::sender_desc desc{};
+    desc.name = name;
+    auto created = nozzle::sender::create(desc);
+    if (!created.ok()) {
+        std::cerr << created.error().message << '\n';
+        return 1;
+    }
+    auto sender = std::move(created.value());
+    nozzle::texture_desc texture{};
+    texture.width = 65;
+    texture.height = 3;
+    texture.format = nozzle::texture_format::rgba8_unorm;
+    auto acquired = sender.acquire_writable_frame(texture);
+    if (!acquired.ok()) {
+        std::cerr << acquired.error().message << '\n';
+        return 1;
+    }
+    auto &frame = acquired.value();
+    auto locked = nozzle::lock_writable_pixels_mapping_with_origin(
+        frame, nozzle::texture_origin::top_left);
+    if (!locked.ok()) {
+        std::cerr << locked.error().message << '\n';
+        return 1;
+    }
+    const auto &pixels = locked.value().pixels();
+    const bool bgra = pixels.format == nozzle::texture_format::bgra8_unorm;
+    if (!bgra && pixels.format != nozzle::texture_format::rgba8_unorm) {
+        std::cerr << "unexpected native sender storage format\n";
+        return 1;
+    }
+    for (uint32_t y = 0; y < pixels.height; ++y) {
+        auto *row = static_cast<uint8_t *>(pixels.data) +
+            static_cast<std::ptrdiff_t>(y) * pixels.row_stride_bytes;
+        for (uint32_t x = 0; x < pixels.width; ++x) {
+            const uint8_t red = static_cast<uint8_t>(190 + y);
+            const uint8_t blue = static_cast<uint8_t>(40 + y);
+            row[4 * x] = bgra ? blue : red;
+            row[4 * x + 1] = static_cast<uint8_t>(20 + x);
+            row[4 * x + 2] = bgra ? red : blue;
+            row[4 * x + 3] = 149;
+        }
+    }
+    std::cout << "native_sender_storage=" << (bgra ? "BGRA8" : "RGBA8")
+              << " row_stride=" << pixels.row_stride_bytes << '\n';
+    auto unlocked = locked.value().unlock_checked();
+    if (!unlocked.ok()) {
+        std::cerr << unlocked.error().message << '\n';
+        return 1;
+    }
+    auto committed = sender.commit_frame(frame);
+    if (!committed.ok()) {
+        std::cerr << committed.error().message << '\n';
+        return 1;
+    }
+    std::cout << "native_sender_published=195_pixels" << std::endl;
+    // Keep the published surface alive until the Python reader has released it.
+    std::string acknowledgement;
+    return std::getline(std::cin, acknowledgement) && acknowledgement == "done" ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
+    if (argc == 3 && std::string(argv[1]) == "--send") {
+        return send_pattern(argv[2]);
+    }
     if (argc != 2) {
-        std::cerr << "usage: nozzle_python_native_peer sender_name\n";
+        std::cerr << "usage: nozzle_python_native_peer [--send] sender_name\n";
         return 2;
     }
     nozzle::receiver_desc desc{};
