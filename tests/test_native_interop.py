@@ -8,7 +8,8 @@ import nozzle
 import pytest
 
 
-def test_python_sender_native_storage():
+@pytest.mark.parametrize("layout", ["rgba", "rgba_strided_readonly", "rgb"])
+def test_python_sender_native_storage(layout):
     peer = os.environ.get("NOZZLE_NATIVE_PEER")
     if not peer:
         pytest.skip("native peer is not configured for this job")
@@ -18,8 +19,17 @@ def test_python_sender_native_storage():
     for y in range(3):
         for x in range(65):
             pixels[y, x] = [190 + y, 20 + x, 40 + y, 149]
+    command = [peer, name]
+    if layout == "rgba_strided_readonly":
+        backing = np.empty((3, 130, 4), dtype=np.uint8)
+        backing[:, ::2, :] = pixels
+        pixels = backing[:, ::2, :]
+        pixels.flags.writeable = False
+    elif layout == "rgb":
+        pixels = pixels[:, :, :3].copy()
+        command = [peer, "--receive-rgb", name]
     with subprocess.Popen(
-        [peer, name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     ) as process:
         try:
             deadline = time.monotonic() + 8

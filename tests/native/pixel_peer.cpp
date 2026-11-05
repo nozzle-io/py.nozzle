@@ -72,12 +72,13 @@ int main(int argc, char **argv) {
     if (argc == 3 && std::string(argv[1]) == "--send") {
         return send_pattern(argv[2]);
     }
-    if (argc != 2) {
-        std::cerr << "usage: nozzle_python_native_peer [--send] sender_name\n";
+    const bool opaque = argc == 3 && std::string(argv[1]) == "--receive-rgb";
+    if (argc != 2 && !opaque) {
+        std::cerr << "usage: nozzle_python_native_peer [--send|--receive-rgb] sender_name\n";
         return 2;
     }
     nozzle::receiver_desc desc{};
-    desc.name = argv[1];
+    desc.name = argv[opaque ? 2 : 1];
     auto created = nozzle::receiver::create(desc);
     if (!created.ok()) {
         std::cerr << created.error().message << '\n';
@@ -122,7 +123,8 @@ int main(int argc, char **argv) {
                 const uint8_t green = static_cast<uint8_t>(20 + x);
                 const uint8_t blue = static_cast<uint8_t>(40 + y);
                 const uint8_t expected[4] = {
-                    bgra ? blue : red, green, bgra ? red : blue, 149};
+                    bgra ? blue : red, green, bgra ? red : blue,
+                    static_cast<uint8_t>(opaque ? 255 : 149)};
                 for (uint32_t channel = 0; channel < 4; ++channel) {
                     if (row[4 * x + channel] != expected[channel]) {
                         std::cerr << "native_storage_mismatch x=" << x << " y=" << y

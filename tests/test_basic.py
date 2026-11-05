@@ -99,7 +99,7 @@ def test_frame_info():
     info = frame.info()
     assert info.width == 200
     assert info.height == 100
-    assert info.format == nozzle.TextureFormat.RGBA8_UNORM
+    assert info.format in (nozzle.TextureFormat.RGBA8_UNORM, nozzle.TextureFormat.BGRA8_UNORM)
     assert hasattr(info, 'semantic_format'), "FrameInfo missing semantic_format attribute"
     assert info.semantic_format == nozzle.TextureFormat.RGBA8_UNORM
     frame.release()
@@ -115,7 +115,7 @@ def test_frame_info_semantic_format_field():
     info = frame.info()
     assert hasattr(info, 'semantic_format'), "FrameInfo missing semantic_format attribute"
     assert info.semantic_format == nozzle.TextureFormat.RGBA8_UNORM
-    assert info.format == info.semantic_format
+    assert info.format in (nozzle.TextureFormat.RGBA8_UNORM, nozzle.TextureFormat.BGRA8_UNORM)
     frame.release()
 
 
@@ -214,11 +214,43 @@ def test_locked_pixels():
     arr = locked.to_ndarray()
     assert arr.shape == (64, 64, 4)
     assert arr.dtype == np.uint8
-    np.testing.assert_array_equal(arr[10, 20], [255, 0, 128, 200])
+    assert locked.format in (nozzle.TextureFormat.RGBA8_UNORM, nozzle.TextureFormat.BGRA8_UNORM)
+    expected = ([128, 0, 255, 200] if locked.format == nozzle.TextureFormat.BGRA8_UNORM
+                else [255, 0, 128, 200])
+    np.testing.assert_array_equal(arr[10, 20], expected)
 
     dlpack_arr = locked.__dlpack__()
     assert dlpack_arr.shape == (64, 64, 4)
-    np.testing.assert_array_equal(dlpack_arr[10, 20], [255, 0, 128, 200])
+    np.testing.assert_array_equal(dlpack_arr[10, 20], expected)
+    assert np.shares_memory(arr, dlpack_arr)
+
+
+@pytest.mark.parametrize("half", [False, True])
+def test_multibyte_mapped_rows(half):
+    sender = create_sender_or_skip(f"test_stride_{half}", "test_app")
+    receiver = nozzle.Receiver.create(f"test_stride_{half}", "test_viewer")
+    values = np.arange(3 * 65 * 4, dtype=np.float32).reshape(3, 65, 4) / 1024
+    # Include the smallest half subnormal, not just normal half values.
+    values[0, 0, 0] = 2 ** -24
+    original = values.astype(np.float16).view(np.uint16) if half else values
+    sender.publish_array(original)
+    frame = wait_for_frame(receiver)
+    copied = frame.get_array()
+    direct = frame.__dlpack__()
+    expected_copy = original.view(np.float16).astype(np.float32) if half else original
+    np.testing.assert_array_equal(copied, expected_copy)
+    np.testing.assert_array_equal(direct, original)
+    assert copied.flags.c_contiguous
+    assert direct.flags.c_contiguous
+    locked = frame.lock_pixels()
+    assert locked.format == (nozzle.TextureFormat.RGBA16_FLOAT if half
+                             else nozzle.TextureFormat.RGBA32_FLOAT)
+    raw = locked.to_ndarray()
+    raw_direct = locked.__dlpack__()
+    np.testing.assert_array_equal(raw, original)
+    np.testing.assert_array_equal(raw_direct, original)
+    assert raw.strides[1:] == (4 * original.itemsize, original.itemsize)
+    assert np.shares_memory(raw, raw_direct)
 
 
 def test_locked_pixels_invalid_frame():
