@@ -42,7 +42,14 @@ jobs:
       - name: Build and install
         run: pip install -e . --no-build-isolation
 
+      - name: Build independent native pixel receiver
+        run: |
+          cmake -S tests/native -B build-native-peer -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-native-peer --config Release --parallel 3
+
       - name: Test
+        env:
+          NOZZLE_NATIVE_PEER: ${{ github.workspace }}/build-native-peer/nozzle_python_native_peer
         run: python -m pytest tests/ -v
 
   build-windows:

@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.26)
+project(nozzle_python_native_peer LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
+endif()
+set(NOZZLE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(NOZZLE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(NOZZLE_BUILD_OPENGL OFF CACHE BOOL "" FORCE)
+add_subdirectory(../../libs/nozzle nozzle)
+add_executable(nozzle_python_native_peer pixel_peer.cpp)
+target_link_libraries(nozzle_python_native_peer PRIVATE nozzle)
