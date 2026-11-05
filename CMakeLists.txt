@@ -13,6 +13,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(APPLE)
     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        # Legacy source-build fallback, not the distributed wheel contract.
+        # Release CI sets MACOSX_DEPLOYMENT_TARGET=14.0 for compilation and wheel tags.
         set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "" FORCE)
     endif()
 endif()

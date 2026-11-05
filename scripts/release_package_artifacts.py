@@ -9,8 +9,6 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +16,13 @@ from verify_package_artifacts import (
     DIST_PREFIX,
     EXPECTED_ABI_TAG,
     EXPECTED_PYTHON_TAG,
+    EXPECTED_MACOS_PLATFORM_TAG,
     REQUIRED_SDIST_PATHS,
     archive_rel_paths,
     parse_wheel,
     verify_wheel_payload,
+    verify_macos_wheel_metadata,
+    verify_macos_universal2_binaries,
 )
 
 SEMVER_TAG_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -29,7 +30,7 @@ PUBLISH_POLICY = "publishable-github-release"
 LINUX_REJECT_POLICY = "ci-only-raw-linux"
 LINUX_REJECT_REASON = "raw-linux-not-public"
 EXPECTED_PLATFORM_TAGS = {
-    "macos_wheel": "macosx_14_0_universal2",
+    "macos_wheel": EXPECTED_MACOS_PLATFORM_TAG,
     "windows_wheel": "win_amd64",
 }
 ARTIFACT_CLASS_PLATFORMS = {
@@ -199,6 +200,7 @@ def validate_artifact_class(path: Path, artifact_class: str, version: str) -> di
         )
         native_payload = verify_wheel_payload(path, ARTIFACT_CLASS_PLATFORMS[artifact_class])
         if artifact_class == "macos_wheel":
+            verify_macos_wheel_metadata(path)
             verify_macos_universal2_binaries(path, native_payload)
         return record
     if artifact_class == "sdist":
@@ -219,34 +221,6 @@ def validate_artifact_class(path: Path, artifact_class: str, version: str) -> di
             "platform_tag": "sdist",
         }
     fail(f"unknown artifact class: {artifact_class}")
-
-def universal2_archs_from_lipo_output(output: str) -> list[str]:
-    archs = [
-        arch
-        for arch in ("arm64", "x86_64")
-        if re.search(rf"(^|[^A-Za-z0-9_]){arch}([^A-Za-z0-9_]|$)", output)
-    ]
-    return archs
-
-
-def verify_macos_universal2_binaries(wheel: Path, native_payload: list[str]) -> None:
-    with tempfile.TemporaryDirectory(prefix="py-nozzle-universal2-wheel.") as tmp:
-        extract_root = Path(tmp)
-        with zipfile.ZipFile(wheel) as zf:
-            for name in native_payload:
-                zf.extract(name, extract_root)
-        for name in native_payload:
-            binary = extract_root / name
-            completed = subprocess.run(["lipo", "-info", str(binary)], text=True, capture_output=True)
-            if completed.returncode != 0:
-                fail(f"lipo failed for {name}: {completed.stderr.strip()}")
-            archs = universal2_archs_from_lipo_output(completed.stdout)
-            if archs != ["arm64", "x86_64"]:
-                fail(f"{name} is not universal2: {completed.stdout.strip()}")
-            print(f"mach_o_binary={name}")
-            print("mach_o_archs=arm64,x86_64")
-        print("universal2_binary_verified=yes")
-
 
 def smoke_kind(artifact_class: str) -> str:
     return "sdist" if artifact_class == "sdist" else "wheel"

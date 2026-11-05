@@ -20,7 +20,7 @@ If you encounter problems, please do not become angry; instead, contributions in
 - Python 3.12+
 - CMake 3.26+
 - C++17 compiler
-- macOS 12+ / Windows 10+ / Linux (glibc 2.31+)
+- macOS 14+ for release wheels / Windows 10+ / Linux (glibc 2.31+)
 
 ## Install
 
@@ -43,6 +43,13 @@ git clone --recurse-submodules https://github.com/nozzle-io/py.nozzle.git
 cd py.nozzle
 pip install .
 ```
+
+The CMake default `CMAKE_OSX_DEPLOYMENT_TARGET=12.0` is a legacy fallback for
+source builds when no target is supplied. It is not the Python distribution's
+supported minimum and does not demonstrate macOS 12 runtime compatibility.
+Release wheel CI explicitly supplies `MACOSX_DEPLOYMENT_TARGET=14.0`, which
+sets both the native compilation minimum and wheel platform tag. A local
+source build with different settings is not a conforming release wheel.
 
 ## Usage
 
@@ -189,6 +196,16 @@ normalizes BGRA8 to RGBA, and retains half-float data as uint16 bits.
 | `frame.__dlpack__()` | Legacy direct array copy; not a DLPack capsule |
 
 ## Architecture
+
+### macOS release wheels
+
+Published wheels retain the `cp312-abi3-macosx_14_0_universal2` contract,
+independent of the GitHub runner OS. The packaging job sets
+`MACOSX_DEPLOYMENT_TARGET=14.0` for both scikit-build-core wheel tagging and
+native compilation. Both the wheel metadata and each Mach-O slice must match
+that policy. A macOS 15 smoke run does not establish macOS 14 runtime testing
+or execution of the Intel slice. Developer builds can select another target;
+they are not automatically accepted as release artifacts.
 
 ```
 py.nozzle
