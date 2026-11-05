@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,7 +89,7 @@ jobs:
         run: python -m pytest tests/ -v
 
   package-macos-wheel:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -208,7 +208,7 @@ jobs:
 
 
   release-validate-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     needs:
       - package-macos-wheel
       - package-windows-wheel
