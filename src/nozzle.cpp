@@ -264,7 +264,7 @@ NB_MODULE(_nozzle, m) {
         ;
 
     nb::class_<LockedPixels>(m, "LockedPixels")
-        .def("to_ndarray", [](LockedPixels &lp) -> nb::ndarray<nb::numpy> {
+        .def("to_ndarray", [](LockedPixels &lp) -> nb::ndarray<nb::numpy, nb::ro> {
             auto fi = get_format_info(lp.format);
             if (fi.channels == 0) {
                 throw std::runtime_error("unsupported texture format");
@@ -283,7 +283,7 @@ NB_MODULE(_nozzle, m) {
                     static_cast<int64_t>(fi.channels),
                     1
                 };
-                return nb::ndarray<nb::numpy>(
+                return nb::ndarray<nb::numpy, nb::ro>(
                     lp.data, 3, shape, owner, strides, fi.dtype
                 );
             } else {
@@ -295,50 +295,11 @@ NB_MODULE(_nozzle, m) {
                     static_cast<int64_t>(lp.row_bytes / static_cast<std::ptrdiff_t>(fi.element_bytes)),
                     1
                 };
-                return nb::ndarray<nb::numpy>(
+                return nb::ndarray<nb::numpy, nb::ro>(
                     lp.data, 2, shape, owner, strides, fi.dtype
                 );
             }
         }, nb::rv_policy::reference_internal)
-        .def("__dlpack__", [](LockedPixels &lp, nb::object, nb::object,
-                              nb::object, nb::object) -> nb::ndarray<nb::numpy> {
-            auto fi = get_format_info(lp.format);
-            if (fi.channels == 0) {
-                throw std::runtime_error("unsupported texture format");
-            }
-            nb::handle owner = nb::find(&lp);
-            if (fi.channels > 1) {
-                size_t shape[3] = {
-                    static_cast<size_t>(lp.height),
-                    static_cast<size_t>(lp.width),
-                    static_cast<size_t>(fi.channels)
-                };
-                int64_t strides[3] = {
-                    static_cast<int64_t>(lp.row_bytes / static_cast<std::ptrdiff_t>(fi.element_bytes)),
-                    static_cast<int64_t>(fi.channels),
-                    1
-                };
-                return nb::ndarray<nb::numpy>(
-                    lp.data, 3, shape, owner, strides, fi.dtype
-                );
-            } else {
-                size_t shape[2] = {
-                    static_cast<size_t>(lp.height),
-                    static_cast<size_t>(lp.width)
-                };
-                int64_t strides[2] = {
-                    static_cast<int64_t>(lp.row_bytes / static_cast<std::ptrdiff_t>(fi.element_bytes)),
-                    1
-                };
-                return nb::ndarray<nb::numpy>(
-                    lp.data, 2, shape, owner, strides, fi.dtype
-                );
-            }
-        }, "stream"_a = nb::none(), "max_version"_a = nb::none(),
-           "dl_device"_a = nb::none(), "copy"_a = nb::none())
-        .def("__dlpack_device__", [](LockedPixels &) {
-            return nb::make_tuple(1, 0);
-        })
         .def_prop_ro("width", [](const LockedPixels &lp) { return lp.width; })
         .def_prop_ro("height", [](const LockedPixels &lp) { return lp.height; })
         .def_prop_ro("format", [](const LockedPixels &lp) { return lp.format; })
@@ -362,21 +323,6 @@ NB_MODULE(_nozzle, m) {
                 throw std::runtime_error(result.error().message.c_str());
             }
             return pixels_to_numpy(result.value().pixels(), true);
-        })
-        .def("__dlpack__", [](nz::frame &frm, nb::object, nb::object,
-                              nb::object, nb::object) -> nb::object {
-            if (!frm.valid()) {
-                throw std::runtime_error("frame is not valid");
-            }
-            auto result = nz::lock_frame_pixels_mapping_with_origin(frm, nz::texture_origin::top_left);
-            if (!result.ok()) {
-                throw std::runtime_error(result.error().message.c_str());
-            }
-            return pixels_to_numpy(result.value().pixels());
-        }, "stream"_a = nb::none(), "max_version"_a = nb::none(),
-           "dl_device"_a = nb::none(), "copy"_a = nb::none())
-        .def("__dlpack_device__", [](nz::frame &) {
-            return nb::make_tuple(1, 0);
         })
         ;
 

@@ -100,10 +100,13 @@ transfer function. RGBA16 Float is widened to float32; other listed formats
 retain their element representation. Float32 channels are not swapped.
 
 `frame.lock_pixels()` transfers the frame into a `LockedPixels` owner.
-`locked.to_ndarray()` is a raw view: its channel order is the actual
+`locked.to_ndarray()` is a read-only raw view: its channel order is the actual
 `locked.format`, and its strides retain mapped row padding. In particular,
 BGRA8 yields `[B, G, R, A]`, not `[R, G, B, A]`. The view retains the mapping
-owner. No in-place swap or hidden normalization copy is performed.
+owner. No in-place swap or hidden normalization copy is performed. Mapping can
+still involve backend staging/readback. Read-only access prevents writes through
+the view; it does not freeze producer updates to shared storage. Use
+`get_array()` for a retained copy rather than retaining a live mapped view.
 
 `frame.info().format` describes storage; `semantic_format` describes the
 published meaning. A logical RGBA8 frame can have BGRA8 storage on Metal.
@@ -151,19 +154,22 @@ to a contiguous temporary by nanobind before copying. Unsupported storage
 conversions fail rather than reinterpreting the input bytes or reducing
 precision silently.
 
-### DLPack Support
+### NumPy API Migration
 
-The current `__dlpack__` methods return NumPy arrays, not protocol capsules.
-They are not conforming DLPack producers; do not rely on `numpy.from_dlpack`,
-PyTorch, or JAX interoperability until
-[the DLPack contract repair](https://github.com/nozzle-io/nozzle-dev/issues/215)
-is complete. Device/copy/version arguments are currently ignored.
+`Frame` and `LockedPixels` do not implement DLPack. The former `__dlpack__`
+and `__dlpack_device__` methods were removed because they advertised a protocol
+that the array-returning implementation did not implement
+([#215](https://github.com/nozzle-io/nozzle-dev/issues/215)). A real exporter is
+deferred; do not pass these objects to `numpy.from_dlpack`, PyTorch or JAX.
 
-For existing direct callers only: `frame.__dlpack__()` makes a packed copy,
-normalizes BGRA8 to RGBA, and retains half-float data as uint16 bits.
-`locked.__dlpack__()` returns a raw storage-ordered view, like
-`locked.to_ndarray()`. These two operations are not both zero-copy. Prefer
-`get_array()` or `to_ndarray()` for explicit array access.
+Replace direct `frame.__dlpack__()` calls with `frame.get_array()` for logical
+channel-order copies. Note that `get_array()` widens RGBA16 Float to float32,
+whereas the removed method returned uint16 half bits. For raw storage and half
+bits, create `locked = frame.lock_pixels()`, use `locked.to_ndarray()` and
+consult `locked.format`.
+Replace direct `locked.__dlpack__()` calls with `locked.to_ndarray()`; this
+view is now read-only. Use `.copy()` when an independently writable array is
+needed. These paths do not promise GPU zero-copy interoperability.
 
 ## API Reference
 
@@ -190,10 +196,9 @@ normalizes BGRA8 to RGBA, and retains half-float data as uint16 bits.
 |--------|-------------|
 | `frame.info()` | Get frame metadata (width, height, format, frame_index) |
 | `frame.get_array()` | Copy frame data to NumPy array |
-| `frame.lock_pixels()` | Zero-copy pixel access via `LockedPixels` |
+| `frame.lock_pixels()` | Transfer frame ownership to `LockedPixels` for read-only raw mapped access |
 | `frame.valid()` | Check if frame holds valid data |
 | `frame.release()` | Explicitly release frame |
-| `frame.__dlpack__()` | Legacy direct array copy; not a DLPack capsule |
 
 ## Architecture
 

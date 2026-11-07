@@ -47,7 +47,7 @@ def test_python_sender_native_storage(layout):
 
 
 @pytest.mark.parametrize("access", [
-    "get_array", "frame_dlpack_direct", "lock_pixels", "locked_dlpack_direct",
+    "get_array", "lock_pixels",
 ])
 def test_native_sender_python_receiver(access):
     peer = os.environ.get("NOZZLE_NATIVE_PEER")
@@ -86,17 +86,16 @@ def test_native_sender_python_receiver(access):
             if access == "get_array":
                 actual = frame.get_array()
                 frame.release()
-            elif access == "frame_dlpack_direct":
-                # Existing direct-call behavior; not a standard DLPack consumer test.
-                actual = np.asarray(frame.__dlpack__()).copy()
-                frame.release()
             else:
                 locked = frame.lock_pixels()
                 assert locked.format == storage_format
-                view = (locked.to_ndarray() if access == "lock_pixels"
-                        else locked.__dlpack__())
+                view = locked.to_ndarray()
+                assert not view.flags.writeable
+                with pytest.raises(ValueError, match="read-only"):
+                    view[0, 0, 0] = 0
+                del locked, frame
                 actual = np.asarray(view).copy()
-                del view, locked
+                del view
             output, _ = process.communicate(input="done\n", timeout=3)
         finally:
             if process.poll() is None:
@@ -110,7 +109,7 @@ def test_native_sender_python_receiver(access):
     for y in range(3):
         for x in range(65):
             expected[y, x] = [190 + y, 20 + x, 40 + y, 149]
-    if access in ("lock_pixels", "locked_dlpack_direct"):
+    if access == "lock_pixels":
         if storage_format == nozzle.TextureFormat.BGRA8_UNORM:
             expected = expected[:, :, [2, 1, 0, 3]]
     np.testing.assert_array_equal(actual, expected)
