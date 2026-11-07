@@ -175,24 +175,10 @@ def test_send_receive_float32():
     frame.release()
 
 
-def test_frame_dlpack():
-    sender = create_sender_or_skip("test_dlpack_py", "test_app")
-    receiver = nozzle.Receiver.create("test_dlpack_py", "test_viewer")
-
-    img = np.zeros((32, 32, 4), dtype=np.uint8)
-    img[0, 0] = [200, 100, 50, 255]
-
-    received, frame = publish_until_array(sender, receiver, img, (0, 0), [200, 100, 50, 255])
-    device, device_id = frame.__dlpack_device__()
-    assert device == 1
-    assert device_id == 0
-
-    arr = frame.__dlpack__()
-    assert arr.shape == (32, 32, 4)
-    assert arr.dtype == np.uint8
-    np.testing.assert_array_equal(arr[0, 0], [200, 100, 50, 255])
-    np.testing.assert_array_equal(received[0, 0], [200, 100, 50, 255])
-    frame.release()
+@pytest.mark.parametrize("producer", [nozzle.Frame, nozzle.LockedPixels])
+def test_no_dlpack_protocol(producer):
+    assert not hasattr(producer, "__dlpack__")
+    assert not hasattr(producer, "__dlpack_device__")
 
 
 def test_locked_pixels():
@@ -207,10 +193,6 @@ def test_locked_pixels():
     assert locked.width == 64
     assert locked.height == 64
 
-    device, device_id = locked.__dlpack_device__()
-    assert device == 1
-    assert device_id == 0
-
     arr = locked.to_ndarray()
     assert arr.shape == (64, 64, 4)
     assert arr.dtype == np.uint8
@@ -219,10 +201,11 @@ def test_locked_pixels():
                 else [255, 0, 128, 200])
     np.testing.assert_array_equal(arr[10, 20], expected)
 
-    dlpack_arr = locked.__dlpack__()
-    assert dlpack_arr.shape == (64, 64, 4)
-    np.testing.assert_array_equal(dlpack_arr[10, 20], expected)
-    assert np.shares_memory(arr, dlpack_arr)
+    assert not arr.flags.writeable
+    with pytest.raises(ValueError, match="read-only"):
+        arr[10, 20, 0] = 0
+    del locked, frame
+    np.testing.assert_array_equal(arr[10, 20], expected)
 
 
 @pytest.mark.parametrize("half", [False, True])
@@ -239,21 +222,16 @@ def test_multibyte_mapped_rows(half):
     sender.publish_array(original)
     frame = wait_for_frame(receiver)
     copied = frame.get_array()
-    direct = frame.__dlpack__()
     expected_copy = original.view(np.float16).astype(np.float32) if half else original
     np.testing.assert_array_equal(copied, expected_copy)
-    np.testing.assert_array_equal(direct, original)
     assert copied.flags.c_contiguous
-    assert direct.flags.c_contiguous
     locked = frame.lock_pixels()
     assert locked.format == (nozzle.TextureFormat.RGBA16_FLOAT if half
                              else nozzle.TextureFormat.RGBA32_FLOAT)
     raw = locked.to_ndarray()
-    raw_direct = locked.__dlpack__()
     np.testing.assert_array_equal(raw, original)
-    np.testing.assert_array_equal(raw_direct, original)
     assert raw.strides[1:] == (4 * original.itemsize, original.itemsize)
-    assert np.shares_memory(raw, raw_direct)
+    assert not raw.flags.writeable
 
 
 def test_locked_pixels_invalid_frame():
